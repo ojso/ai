@@ -1,15 +1,15 @@
 # Flask-Exts 架构概览（Architecture Overview）
 
-> 本文是 Flask-Exts 的**稳定架构一页纸**：系统边界、模块依赖、扩展生命周期、请求路径、状态所有权、关键决策与失败边界。实现细节请链接到 `spec.md`、`database.md`、`plugin.md`、`view.md`、`security.md`。
+> 本文是 Flask-Exts 的**稳定架构一页纸**：系统边界、模块依赖、扩展生命周期、请求路径、状态所有权、关键决策与失败边界。实现与领域细节见 `spec.md`；安全边界见 `security.md`。
 >
 > | 项目 | 内容 |
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-08 |
+> | 最后更新 | 2026-11-09 |
 > | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
 > | 适用仓库 | `flask-exts` |
-> | 配套文档 | `requirements.md`（契约）、`spec.md`（实现）、`database.md`（数据库）、`plugin.md`（插件机制）、`view.md`（Admin）、`security.md`（安全）、`testing.md`（验证）、`demo.md`（示例） |
+> | 配套文档 | `requirements.md`（契约）、`spec.md`（实现、Admin、插件与数据库专题）、`security.md`（安全）、`testing.md`（验证）、`demo.md`（示例） |
 
 ## 1. 系统上下文
 
@@ -110,8 +110,10 @@ ExtensionManager()
 - 扩展名称唯一、ASCII 合法。
 - 缺失依赖 → `ExtensionNotFoundError`；循环/自依赖 → `ExtensionDependencyError`。
 - `init_app` 与 `post_init` 各自幂等。
-- `post_init` 晚注册扩展不会自动回溯扫描（见 `view.md` C10）。
+- `post_init` 晚注册扩展不会自动回溯扫描（见 `spec.md` 第 10.16 节 C10）。
 - `db` 是单应用单例；重新绑定前必须 `dispose()`。
+
+> 扩展编写者的实现要求、约束与作者检查清单，详见 [`spec.md` 第 11 章（插件与扩展机制）](./spec.md#11-插件与扩展机制)。
 
 ## 4. 请求生命周期
 
@@ -199,11 +201,11 @@ POST /user/verify_tfa/
 | 关注点 | 机制 | 详见 |
 | --- | --- | --- |
 | 安全 | 密钥派生、哈希、加密、令牌、CSRF、TFA、授权 | `security.md` |
-| 国际化 | Flask-Babel、翻译目录、时区 | `spec.md` 4.9 |
+| 国际化 | Flask-Babel、翻译目录、时区 | `testing.md` 第 7.12 节 / `requirements.md` |
 | 配置 | `app.config`、环境变量、实例配置 | 仓库 `flask-exts/docs/configure.rst` |
-| 信号 | `user_registered`、`to_send_email` | `spec.md` 3.9 |
-| 前端资源 | `frontend` 插件、依赖排序、vendor | `spec.md` 4.9 |
-| CLI | `datastore`、`security` 命令组 | `spec.md` 4.11 |
+| 信号 | `user_registered`、`to_send_email` | `testing.md` 第 7.8 节 / 本文第 3、4 章 |
+| 前端资源 | `frontend` 插件、依赖排序、vendor | `testing.md` 第 7.10 节 / `spec.md` 第 5 章 |
+| CLI | `datastore`、`security` 命令组 | `testing.md` 第 7.11 节 / `requirements.md` |
 | 测试 | pytest、Admin fixtures、安全/用户中心用例 | `testing.md` |
 | 示例 | `examples/demo`、`examples/simple` | `demo.md` |
 
@@ -222,6 +224,22 @@ POST /user/verify_tfa/
 | session 密码指纹 | 改密自动失效旧会话 | 不保护 JWT（见 `security.md` SEC-08） |
 | 无状态签名令牌 | 不需要服务端存储 | 无法主动撤销单个令牌，只能等过期/轮换密钥 |
 | SQLAlchemy 2.0 `Mapped` + `back_populates` | 类型清晰、关系显式 | 代码略冗长 |
+
+### 7.1 设计决策记录规范（ADR）
+
+重大架构调整或新增设计取舍时，应按以下最小模板记录：
+
+```text
+ADR-<序号>: <决策标题>
+状态： proposed | accepted | superseded | rejected
+日期： YYYY-MM-DD
+背景： 触发问题、约束条件、相关需求
+决策： 做什么、不做什么
+理由： 优点、权衡
+备选方案： 其他可行方案与未采用原因
+风险： 主要风险与回滚方式
+关联文档： spec.md / requirements.md / security.md
+```
 
 ## 8. 失败边界与约束
 
@@ -251,8 +269,7 @@ POST /user/verify_tfa/
 | 文档 | 用途 |
 | --- | --- |
 | [`requirements.md`](./requirements.md) | 行为契约、`REQ-*`、验收标准 |
-| [`spec.md`](./spec.md) | 项目规划、设计模式、模块实现、审查 |
-| [`view.md`](./view.md) | View/ModelView/DataBackend/Inline/AJAX/导出 |
+| [`spec.md`](./spec.md) | 项目规划、设计模式、模块实现；第 10～12 章分别维护 View/Admin、插件与数据库专题 |
 | [`security.md`](./security.md) | 威胁模型、认证/授权、令牌、CSRF、TFA、风险 |
 | [`testing.md`](./testing.md) | 测试分层、用例、E2E、性能、覆盖率、CI |
 | [`demo.md`](./demo.md) | `examples/demo` 运行、结构、扩展、排错 |

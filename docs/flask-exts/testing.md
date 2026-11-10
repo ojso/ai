@@ -6,18 +6,17 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-08 |
+> | 最后更新 | 2026-11-09 |
 > | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；commit 未记录，待补录；未复核，文档集未附带源码快照） |
 > | 适用仓库 | `flask-exts` |
-> | 文档驱动 | `spec.md`：架构、设计、实现细节 |
+> | 文档驱动 | `architecture.md`：架构；`spec.md`：设计和实现，第 10 章涵盖 View/Admin 路由、ModelView、DataBackend、Inline、AJAX、导出 |
 > | 行为契约 | `requirements.md`：`REQ-*`、验收标准、追溯 |
 > | 测试驱动 | `testing.md`（本文）：测试策略、用例、执行计划、质量门禁 |
 > | 安全治理 | `security.md`：威胁模型、控制措施、风险清单、发布检查 |
-> | View/Admin | `view.md`：路由、ModelView、DataBackend、Inline、AJAX、导出 |
 >
 > **文档状态说明**：本文的“现状”数据来自 2026-11-07 的仓库快照；用例中的 `tests/e2e/`、`tests/performance/`、`mail_outbox` 等属于**目标结构**，当前尚未全部落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为可执行规范。重新统计现状的方法见 1.5。
 >
-> **使用方式**：修改代码前先对照 `spec.md` 确认契约；修改后运行本文定义的测试与门禁。缺陷修复遵循“先写失败测试，再修复”。
+> **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文的规划不代表 CI 或测试已实现。
 
 ## 目录
 
@@ -75,6 +74,15 @@ coverage run -m pytest -q
 coverage report -m
 ```
 
+安全相关测试入口（路径与可执行性需结合仓库当前状态核实）：
+
+```bash
+python -m pytest -q tests/unit/security
+python -m pytest -q tests/integration/security
+python -m pytest -q tests/integration/usercenter/test_user_view.py
+python -m pytest -q tests/unit/forms/form/test_form.py
+```
+
 > 当前 `pyproject.toml` 已开启 `--strict-markers`。在 3.3 的 markers 尚未注册前，不要使用 `-m unit` 这类命令，否则 pytest 会直接报错。
 
 ### 0.3 本文阅读顺序
@@ -85,7 +93,7 @@ coverage report -m
 | 要写新测试 | 4 → 5 → 6 → 7 → 15 |
 | 要补 E2E / 性能 | 8 → 9 → 11 → 12 |
 | 要做质量门禁 | 10 → 11 → 16 |
-| 要修缺陷 | 主文档第 7 章 → 本文 7 → 12 |
+| 要修缺陷 | 相关契约与问题清单（`spec.md` 第 10.16 节 / `security.md` 第 11 节）→ 本文 7 → 12 |
 
 ### 0.4 状态图例
 
@@ -129,20 +137,37 @@ addopts = "-ra --strict-markers --strict-config"
 
 | 区域 | 测试函数数 | 主要文件 | 评价 |
 | --- | ---: | --- | --- |
-| `integration/admin` | 53 | `test_views.py`、`test_forms.py`、`test_inline_*.py`、`test_search.py`、`test_sorting.py`、`test_pagination.py`、`test_actions.py`、`test_export.py`、`test_primary_keys.py` | 项目最扎实的部分，覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键 |
+| `integration/admin` | 53 | 完整入口见 1.2.1 | 历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键；现状待核实 |
 | `unit/extension_core` | 30 | `test_registry.py`、`test_manager.py` | 覆盖依赖排序、循环依赖、幂等、关闭、内置扩展装配 |
 | `unit/admin` | 19 | `test_mockview.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py` | 覆盖视图元数据与格式化，偏“配置读取” |
-| `unit/forms` | 19 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_wtforms.py`、`test_form.py` | 覆盖字段、文件、CSRF 基础；边界与错误路径仍可补 |
-| `integration/usercenter` | 14 | `test_user_view.py` | 覆盖注册、登录、TFA、改邮箱、改密码、找回、恢复码 |
+| `unit/forms` | 19 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py` | 覆盖字段、文件、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补 |
+| `integration/usercenter` | 14 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、TFA 启用/关闭/登录/防绕过、inactive 账号、改密码、找回/重置、恢复码 |
 | `unit/datastore` | 14 | `test_db.py`、`test_query.py` | 覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖 |
-| `unit/security` | 9 | `test_authorizer.py`、`test_tfa.py`、`test_urls.py` | 授权与 URL 安全较好；TFA 仅 1 个基础测试 |
+| `unit/security` | 9 | `tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py` | 授权包括 admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行 |
 | `integration/builtin_extensions` | 8 | `test_login.py`、`test_admin_views.py` | 覆盖 JWT、蓝图、默认视图 |
 | `unit/builtin_extensions` | 8 | `test_babel.py`、`test_exts.py`、`test_frontend.py` | 覆盖 Babel、扩展注册、Jinja 全局 |
-| `integration/security` | 5 | `test_core.py` | 覆盖密钥、哈希、序列化、邮箱验证、密码变更使会话失效 |
+| `integration/security` | 5 | `tests/integration/security/test_core.py` | 覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效 |
 | `integration/userstore` | 3 | `test_sqla_userstore.py` | 覆盖模型注册、基础 CRUD、角色；`get_users`/`remove_user` 未覆盖 |
 | `unit/emailer` | 2 | `test_base.py`、`test_smtp.py` | 仅基础路径；错误路径与默认发送器未覆盖 |
 | `unit/frontend` | 9 | `test_plugin_manager.py`、`test_base.py`、宏测试 | 覆盖注册、排序、循环依赖、资源拼接 |
 | `commands` | 0 | 无 | CLI 完全未测试 |
+
+#### 1.2.1 Admin 测试文件快照
+
+以下入口及覆盖描述来自 2026-11-07 快照，当前尚未复核；文件名不证明相关断言存在或测试通过。
+
+- `tests/integration/admin/sqla/test_views.py`
+- `tests/integration/admin/sqla/test_forms.py`
+- `tests/integration/admin/sqla/test_search.py`
+- `tests/integration/admin/sqla/test_sorting.py`
+- `tests/integration/admin/sqla/test_pagination.py`
+- `tests/integration/admin/sqla/test_actions.py`
+- `tests/integration/admin/sqla/test_export.py`
+- `tests/integration/admin/sqla/test_inline_forms.py`
+- `tests/integration/admin/sqla/test_inline_views.py`
+- `tests/integration/admin/sqla/test_inline_ajax.py`
+- `tests/integration/admin/sqla/test_ajax.py`
+- `tests/integration/admin/sqla/test_primary_keys.py`
 
 ### 1.3 主要缺口
 
@@ -259,6 +284,11 @@ PY
 6. **断言最终状态**：不仅断言状态码，还断言数据库/响应关键内容。
 7. **错误路径优先**：安全、权限、边界、异常路径至少与成功路径同等重要。
 8. **快慢分离**：性能/浏览器测试用 marker 标记，默认不跑。
+9. **证据分离**：测试设计、测试代码存在、成功收集和执行通过分别记录，任何一步都不能由上一阶段推定。
+10. **防止自证**：先从契约设计预期和错误路径，再检查实现；不以当前实现输出倒推期望，不通过放宽断言、删除或跳过测试消除失败。适用时由未参与实现的人员复核关键断言。
+11. **真实边界**：Mock 只替代可控的外部边界，记录未覆盖的真实行为；涉及事务、权限、浏览器交互或协议兼容时，按风险补充真实或隔离环境验证。
+
+新增行为和缺陷优先先运行针对性测试并记录预期失败，再实施修复并确认转绿。若失败阶段无法运行或现有测试已能稳定复现，记录原因与实际证据，不伪称已完成先红；完成后还需运行受影响的回归检查。
 
 ### 2.4 并行、顺序与 flaky 处理
 
@@ -828,42 +858,74 @@ class UserFactory(factory.Factory):
 9. 权限：匿名/普通用户/admin/未激活
 10. 开放重定向防护
 
-### 6.2 需求追溯矩阵
+<a id="62-需求追溯矩阵"></a>
 
-`requirements.md` 定义 `REQ-*` 契约，本文定义验证。下表是域级摘要；当前要求是“必须有显式的 `REQ → CASE` 映射”，不能只保留抽象域级描述。
+### 6.2 需求追溯与用例导航
 
-| 契约/能力 | 契约/实现参考 | 测试用例 | 主要层级 |
-| --- | --- | --- | --- |
-| 扩展生命周期、依赖、关闭 | 第 2 章 | E-01～E-20 | U/I |
-| 数据库绑定、会话、Query | 第 4 章 | D-01～D-18、TX-01～TX-09 | U/I |
-| Admin 列表/搜索/排序/分页 | 第 4、5 章 | A-01～A-10、A-31～A-33 | I/E |
-| Admin CRUD/Inline/导出/批量 | 第 4、5 章 | A-11～A-24 | I/E |
-| 权限与认证 | 第 4、5 章 | A-25～A-28、S-12～S-15、UC-03～UC-07 | I/E |
-| 表单、CSRF、上传 | 第 4 章 | F-01～F-17 | U/I |
-| 令牌、加密、TFA | 第 4、5 章 | S-01～S-21、UC-16～UC-19 | U/I/E |
-| 注册、邮箱、密码 | 第 5 章 | UC-01～UC-15 | I/E |
-| 邮件与信号 | 第 4 章 | M-01～M-09、SIG-01～SIG-06 | U/I |
-| 前端插件与模板 | 第 4 章 | FE-01～FE-10 | U/I |
-| CLI | 第 4 章 | CLI-01～CLI-06 | I |
-| i18n / 时区 | 第 4 章 | A-29、F-17、I18N-01～I18N-06 | U/I/E |
-| 错误处理 | 第 4 章 | ERR-01～ERR-08 | I/E |
+`requirements.md` 定义 `REQ-*` 契约，本文维护测试设计。具体 `REQ → TC → 测试入口` 唯一维护在 [`requirements.md`](./requirements.md) 各契约的“验收”字段；`TC` 的编号规则和历史别名见第 6.3 节。下表只按能力导航，不推断契约关联、层级或覆盖情况；用例层级、状态及断言以各用例条目为准。
 
-#### 关键 `REQ → CASE` 映射示例
+| 能力 | 测试用例入口 |
+| --- | --- |
+| 扩展生命周期、依赖、关闭 | [扩展测试](#71-extension-系统) |
+| 数据库绑定、会话、Query、事务 | [数据测试](#72-datastore--query)、[事务与约束](#711-数据库事务与约束) |
+| Admin 列表、CRUD、Inline、导出、权限 | [Admin 测试](#73-admin) |
+| 表单、CSRF、上传 | [表单测试](#74-forms) |
+| 授权、令牌、加密、TFA | [安全测试](#75-security)、[用户中心测试](#77-usercenter) |
+| 用户存储 | [UserStore 测试](#76-userstore) |
+| 注册、邮箱、密码 | [用户中心测试](#77-usercenter) |
+| 邮件与信号 | [邮件测试](#78-emailer)、[信号测试](#712-错误处理与信号契约) |
+| 前端插件与模板 | [前端测试](#79-frontend) |
+| CLI | [命令测试](#710-commands) |
+| i18n / 时区 | [国际化测试](#713-i18n时区与复数) |
+| 错误处理 | [错误处理测试](#712-错误处理与信号契约) |
+| 端到端流程 | [HTTP E2E 流程](#82-http-e2e-流程清单) |
 
-| 关键契约 | 测试用例 | 状态 |
-| --- | --- | --- |
-| `REQ-EXT-003` | `E-11`、`E-12`、`E-13`、`E-14` | 现有 |
-| `REQ-DATA-002` | `D-09`、`D-10`、`D-11`、`D-12`、`D-13` | 部分现有 |
-| `REQ-AUTH-001` | `UC-03` | 现有 |
-| `REQ-AUTH-003` | `S-18` | 现有 |
-| `REQ-AUTHZ-005` | 待补 | 待修/待补 |
-| `REQ-REG-001` | `UC-01` | 现有 |
-| `REQ-REG-006` | 待补 | 待补 |
-| `REQ-RESET-001` | `UC-14` | 现有 |
-| `REQ-ADMIN-005` | `A-31` | 待补 |
-| `REQ-VIEW-001` | `demo TreeView` | 待补 |
+#### 追溯证据检查
 
-> 用途：主文档新增或修改契约时，必须能找到对应测试；找不到就说明存在覆盖缺口，应在本文补用例，而不是只改文档。
+对每条本次变更涉及的契约，核实：
+
+1. 需求中的预期和验收条件是否明确；列出正常、边界、错误及适用的安全场景。
+2. 是否存在对应 `TC-*` 测试用例和测试文件/函数；检查断言是否真正验证该预期，而非仅匹配名称或编号。
+3. 测试是否实际被收集并执行；记录命令、环境、代码基线及通过/失败/未执行结果。
+4. 测试不存在、不能执行或未覆盖某条边界时分别登记缺口；不要将“已设计”写成“已验证”。
+5. 按 `requirements.md` 第 2 节分别维护 `implementation`、`verification` 和问题关联；所有适用验收通过并记录契约修订、代码版本、环境、范围及结果后，才能标 `passed`。
+
+例如 `REQ-AUTHZ-005` 的未复核快照关联 SEC-01：应先确认契约和受影响代码，再设计禁用管理员访问被拒的用例，按实际结果记录失败与修复证据；源码不可见时，当前状态及该缺口均待核实，不代表问题已关闭。
+
+### 6.3 测试用例编号规则
+
+测试用例采用 `TC-<领域>-<序号>`；`TC` 表示 Test Case，领域使用 [`glossary.md`](./glossary.md) 第 1.1 节词表。领域由大写字母开头，后续只能使用大写字母或数字，不含分隔符；范围尚未登记时，先核对既有分类，确需新增则先维护词表。
+
+序号按领域独立分配：`001`～`999` 使用三位，之后使用自然位数，不使用 `000`。分配前检查已登记编号、历史别名及废弃编号，取该领域已分配的最大序号加一，无已分配编号时从 `001` 开始；并行变更合并前检查并解决冲突。完整编号全局唯一、永不复用，领域调整不自动重编号。
+
+测试用例编号与契约编号独立分配：一个 `REQ` 可以关联多个 `TC`，一个 `TC` 也可以验证多个 `REQ`，不能凭序号相同推断关联。跨领域场景选择主要验证的领域，并显式关联其他受影响契约；测试状态、执行入口和执行结果分别记录，不能从编号推断。
+
+**测试层级不放入编号**：Unit、Integration、HTTP E2E、浏览器 E2E 和 Performance 在用例的“类型”字段或所属测试章节中记录；需要区分 HTTP 与浏览器时写明具体类型。同一用例可关联不同层级的多个测试入口，分别记录结果；执行方式或层级调整不因此改号。仓库支持时可用测试标记区分，本文的 marker 规划不代表仓库已注册。
+
+**历史用例迁移（2026-11-09）**：本目录已有用例按下表一对一迁移，范围内从起始编号按顺序对应。旧 `TST-*` 编号保留为历史别名；更早的不带 `TST-` 的编号仍可先补上 `TST-` 再查下表。仅适用于下表所列范围，不能据此前缀或相同序号猜测其他映射。
+
+| 历史测试编号 | 当前测试编号 |
+| --- | --- |
+| `TST-E-01`～`TST-E-20` | `TC-EXT-001`～`TC-EXT-020` |
+| `TST-D-01`～`TST-D-18` | `TC-DATA-001`～`TC-DATA-018` |
+| `TST-A-01`～`TST-A-33` | `TC-ADMIN-001`～`TC-ADMIN-033` |
+| `TST-F-01`～`TST-F-17` | `TC-FORM-001`～`TC-FORM-017` |
+| `TST-S-01`～`TST-S-21` | `TC-SEC-001`～`TC-SEC-021` |
+| `TST-U-01`～`TST-U-15` | `TC-USER-001`～`TC-USER-015` |
+| `TST-UC-01`～`TST-UC-22` | `TC-AUTH-001`～`TC-AUTH-022` |
+| `TST-M-01`～`TST-M-09` | `TC-EMAIL-001`～`TC-EMAIL-009` |
+| `TST-FE-01`～`TST-FE-10` | `TC-FRONTEND-001`～`TC-FRONTEND-010` |
+| `TST-CLI-01`～`TST-CLI-06` | `TC-CLI-001`～`TC-CLI-006` |
+| `TST-TX-01`～`TST-TX-09` | `TC-DATA-019`～`TC-DATA-027` |
+| `TST-ERR-01`～`TST-ERR-08` | `TC-ERROR-001`～`TC-ERROR-008` |
+| `TST-SIG-01`～`TST-SIG-06` | `TC-SIGNAL-001`～`TC-SIGNAL-006` |
+| `TST-I18N-01`～`TST-I18N-06` | `TC-I18N-001`～`TC-I18N-006` |
+| `TST-E2E-AUTH-01`～`TST-E2E-AUTH-06` | `TC-AUTH-023`～`TC-AUTH-028` |
+| `TST-E2E-ADMIN-01`～`TST-E2E-ADMIN-06` | `TC-ADMIN-034`～`TC-ADMIN-039` |
+| `TST-E2E-ERR-01` | `TC-ERROR-009` |
+| `TST-E2E-I18N-01` | `TC-I18N-007` |
+
+迁移仅改变本文档集的编号和引用，不改变用例内容、状态或执行结果。此前带能力段的 `TST-*` 和 `TEST-*` 文档示例未分配；如仓库或外部记录已使用，应先核实实际指向，保留历史引用，不推定与某条 `TC-*` 等价。后续变更或拆分编号时先核实关联并记录映射，按授权同步相关文档、测试代码和工具；仓库不可见时记录未核验。
 
 ## 7. 详细测试用例设计
 
@@ -876,111 +938,119 @@ class UserFactory(factory.Factory):
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| E-01 | 注册合法扩展 | U | P0 | 现有 | 返回实例，name 正确 |
-| E-02 | 重复名称注册 | U | P0 | 现有 | 抛 `ExtensionError`，消息含名称 |
-| E-03 | 非 Extension 类注册 | U | P0 | 现有 | 抛 `ExtensionError` |
-| E-04 | 非法名称（空/非 ASCII/特殊字符） | U | P0 | 现有 | 抛 `ExtensionError` |
-| E-05 | 依赖先于被依赖初始化 | U | P0 | 现有 | 记录顺序中依赖在前 |
-| E-06 | 无依赖扩展保持注册顺序 | U | P1 | 现有 | 顺序稳定 |
-| E-07 | 深链依赖 A→B→C | U | P1 | 现有 | C→B→A |
-| E-08 | 缺失依赖 | U | P0 | 现有 | 抛 `ExtensionNotFoundError` |
-| E-09 | 循环依赖 | U | P0 | 现有 | 抛 `ExtensionDependencyError`，消息含环 |
-| E-10 | 自依赖 | U | P1 | 现有 | 抛 `ExtensionDependencyError` |
-| E-11 | `init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
-| E-12 | `post_init` 前必须 `init` | U | P0 | 现有 | 抛 `ExtensionInitError` |
-| E-13 | `post_init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
-| E-14 | `post_init` 按依赖顺序 | U | P1 | 现有 | 顺序正确 |
-| E-15 | `shutdown` 逆序 | U | P0 | 现有 | 与初始化相反 |
-| E-16 | `shutdown` 单扩展异常隔离 | U | P1 | 现有 | 其他扩展仍关闭，产生 warning |
-| E-17 | 内置扩展图可初始化 | I | P0 | 现有 | 所有内置扩展初始化成功 |
-| E-18 | Admin 收集 Portal/UserCenter 视图 | I | P0 | 现有 | 视图注册到 admin |
-| E-19 | 晚注册扩展 | U | P2 | 待补 | 文档化行为：不回溯扫描 |
-| E-20 | `has_extension` 语义 | U | P2 | 待补 | 明确“已注册”还是“已初始化” |
+| TC-EXT-001 | 注册合法扩展 | U | P0 | 现有 | 返回实例，name 正确 |
+| TC-EXT-002 | 重复名称注册 | U | P0 | 现有 | 抛 `ExtensionError`，消息含名称 |
+| TC-EXT-003 | 非 Extension 类注册 | U | P0 | 现有 | 抛 `ExtensionError` |
+| TC-EXT-004 | 非法名称（空/非 ASCII/特殊字符） | U | P0 | 现有 | 抛 `ExtensionError` |
+| TC-EXT-005 | 依赖先于被依赖初始化 | U | P0 | 现有 | 记录顺序中依赖在前 |
+| TC-EXT-006 | 无依赖扩展保持注册顺序 | U | P1 | 现有 | 顺序稳定 |
+| TC-EXT-007 | 深链依赖 A→B→C | U | P1 | 现有 | C→B→A |
+| TC-EXT-008 | 缺失依赖 | U | P0 | 现有 | 抛 `ExtensionNotFoundError` |
+| TC-EXT-009 | 循环依赖 | U | P0 | 现有 | 抛 `ExtensionDependencyError`，消息含环 |
+| TC-EXT-010 | 自依赖 | U | P1 | 现有 | 抛 `ExtensionDependencyError` |
+| TC-EXT-011 | `init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
+| TC-EXT-012 | `post_init` 前必须 `init` | U | P0 | 现有 | 抛 `ExtensionInitError` |
+| TC-EXT-013 | `post_init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
+| TC-EXT-014 | `post_init` 按依赖顺序 | U | P1 | 现有 | 顺序正确 |
+| TC-EXT-015 | `shutdown` 逆序 | U | P0 | 现有 | 与初始化相反 |
+| TC-EXT-016 | `shutdown` 单扩展异常隔离 | U | P1 | 现有 | 其他扩展仍关闭，产生 warning |
+| TC-EXT-017 | 内置扩展图可初始化 | I | P0 | 现有 | 所有内置扩展初始化成功 |
+| TC-EXT-018 | Admin 收集 Portal/UserCenter 视图 | I | P0 | 现有 | 视图注册到 admin |
+| TC-EXT-019 | 晚注册扩展 | U | P2 | 待补 | 文档化行为：不回溯扫描 |
+| TC-EXT-020 | `has_extension` 语义 | U | P2 | 待补 | 明确“已注册”还是“已初始化” |
 
 ### 7.2 Datastore / Query
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| D-01 | 缺少 `SQLALCHEMY_DATABASE_URI` | U | P0 | 现有 | 抛 `RuntimeError` |
-| D-02 | 扩展 key 与 Flask-SQLAlchemy 区分 | U | P0 | 现有 | 使用 `flask_exts_sqla` |
-| D-03 | 内存 SQLite 共享连接 | U | P0 | 现有 | `StaticPool` + `check_same_thread=False` |
-| D-04 | 未 dispose 重复绑定 | U | P0 | 现有 | 抛 `RuntimeError` |
-| D-05 | dispose 后可重绑定 | U | P0 | 现有 | 新 app 可用 |
-| D-06 | 无 app context dispose | U | P1 | 现有 | 不抛异常 |
-| D-07 | scoped session 按 app context | U | P0 | 现有 | 同 context 同 session |
-| D-08 | `reset_all` 删表重建 | U | P1 | 现有 | 表存在且为空 |
-| D-09 | JOIN 路径复用 | U | P0 | 现有 | 相同路径返回同一 alias |
-| D-10 | 前缀路径复用 | U | P1 | 现有 | 扩展路径复用前缀 |
-| D-11 | 不同关系生成不同 alias | U | P0 | 现有 | 多路径不串 |
-| D-12 | 搜索 `^`/`$`/`=` 语义 | U | P1 | 待补 | 前缀/后缀/精确 |
-| D-13 | 过滤操作符 | U | P1 | 待补 | `==`/`!=`/`>`/`<`/`like`/`in`/`between`/`is_null` |
-| D-14 | 一对多 JOIN 计数 | U | P0 | 待补 | `count` 等于根记录数，不重复 |
-| D-15 | eager load 配置 | U | P2 | 现有（弱） | `joinedload`/`selectinload` 生效 |
-| D-16 | 复合主键删除 | I | P1 | 现有 | 正确删除 |
-| D-17 | 无效关系路径 | U | P1 | 待补 | 抛 `ValueError`/`AttributeError` |
-| D-18 | 类型推断 | U | P1 | 现有 | 常见列类型正确 |
+| TC-DATA-001 | 缺少 `SQLALCHEMY_DATABASE_URI` | U | P0 | 现有 | 抛 `RuntimeError` |
+| TC-DATA-002 | 扩展 key 与 Flask-SQLAlchemy 区分 | U | P0 | 现有 | 使用 `flask_exts_sqla` |
+| TC-DATA-003 | 内存 SQLite 共享连接 | U | P0 | 现有 | `StaticPool` + `check_same_thread=False` |
+| TC-DATA-004 | 未 dispose 重复绑定 | U | P0 | 现有 | 抛 `RuntimeError` |
+| TC-DATA-005 | dispose 后可重绑定 | U | P0 | 现有 | 新 app 可用 |
+| TC-DATA-006 | 无 app context dispose | U | P1 | 现有 | 不抛异常 |
+| TC-DATA-007 | scoped session 按 app context | U | P0 | 现有 | 同 context 同 session |
+| TC-DATA-008 | `reset_all` 删表重建 | U | P1 | 现有 | 表存在且为空 |
+| TC-DATA-009 | JOIN 路径复用 | U | P0 | 现有 | 相同路径返回同一 alias |
+| TC-DATA-010 | 前缀路径复用 | U | P1 | 现有 | 扩展路径复用前缀 |
+| TC-DATA-011 | 不同关系生成不同 alias | U | P0 | 现有 | 多路径不串 |
+| TC-DATA-012 | 搜索 `^`/`$`/`=` 语义 | U | P1 | 待补 | 前缀/后缀/精确 |
+| TC-DATA-013 | 过滤操作符 | U | P1 | 待补 | `==`/`!=`/`>`/`<`/`like`/`in`/`between`/`is_null` |
+| TC-DATA-014 | 一对多 JOIN 计数 | U | P0 | 待补 | `count` 等于根记录数，不重复 |
+| TC-DATA-015 | eager load 配置 | U | P2 | 现有（弱） | `joinedload`/`selectinload` 生效 |
+| TC-DATA-016 | 复合主键删除 | I | P1 | 现有 | 正确删除 |
+| TC-DATA-017 | 无效关系路径 | U | P1 | 待补 | 抛 `ValueError`/`AttributeError` |
+| TC-DATA-018 | 类型推断 | U | P1 | 现有 | 常见列类型正确 |
 
 ### 7.3 Admin
 
-> View/ModelView/SqlaModelView 的实现与配置见 [`view.md`](./view.md)。本节只定义 Admin 测试用例；C1/C2/C5/C6 的回归用例见 `view.md` 第 16 章与 `testing.md` A-21/A-31/A-32。
+> View/ModelView/SqlaModelView 的实现与配置见 [`spec.md` 第 10 章](./spec.md#10-view-与-admin-专题)。本节只定义 Admin 测试用例；C1/C2/C5/C6 的问题说明见 `spec.md` 第 10.16 节，C1/C2/C6 的相关用例为 TC-ADMIN-021/TC-ADMIN-031/TC-ADMIN-032，状态以用例表为准。
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| A-01 | 列表列渲染 | I | P0 | 现有 | 列名/值正确 |
-| A-02 | 默认分页 | I | P0 | 现有 | 页大小、页数、记录数 |
-| A-03 | 可配置页大小白名单 | I | P0 | 现有 | 非白名单回退默认 |
-| A-04 | 无分页（page_size=0） | I | P1 | 现有 | 返回全部 |
-| A-05 | 排序（升/降/关联） | I | P0 | 现有 | 顺序正确 |
-| A-06 | 默认排序 | I | P1 | 现有 | 无参数时按默认 |
-| A-07 | 搜索（普通/关联/无关联行） | I | P0 | 现有 | 命中/不命中 |
-| A-08 | 搜索保留额外参数 | I | P1 | 现有 | 隐藏字段保留 |
-| A-09 | 筛选操作符 | I | P0 | 现有 | 7 种文本操作、数值/日期/布尔 |
-| A-10 | 关联列筛选 | I | P1 | 现有 | 关联表过滤正确 |
-| A-11 | CRUD | I | P0 | 现有 | 创建/编辑/删除 + DB 状态 |
-| A-12 | 详情页 | I | P1 | 现有 | 字段值正确 |
-| A-13 | CSV 导出 | I | P1 | 现有 | 内容/表头 |
-| A-14 | 导出最大行数 | I | P2 | 待补 | 超限行为 |
-| A-15 | 其他导出类型 | I | P2 | 待补 | tablib 支持类型 |
-| A-16 | 行内编辑 | I | P1 | 现有 | 列表页保存 |
-| A-17 | 批量删除 | I | P0 | 现有 | 选中记录删除 |
-| A-18 | Inline 创建/编辑/删除 | I | P0 | 现有 | 父子记录最终状态 |
-| A-19 | Inline 一对多/多对多/一对一 | I | P1 | 现有 | 关系正确 |
-| A-20 | Inline 多外键 | I | P1 | 现有 | 关系映射正确 |
-| A-21 | Inline + AJAX 外键 | I | P0 | 待补 | 页面 200，能搜索/保存（对应 C1） |
-| A-22 | AJAX 外键/多对多 | I | P1 | 现有 | 返回 JSON 正确 |
-| A-23 | 复合主键 | I | P1 | 现有 | 列表/删除正确 |
-| A-24 | 字符串主键 | I | P1 | 现有 | 列表/删除正确 |
-| A-25 | 权限：匿名 | I | P0 | 待补/部分 | 重定向登录或 401 |
-| A-26 | 权限：普通用户 | I | P0 | 待补/部分 | 403 |
-| A-27 | 权限：admin | I | P0 | 现有 | 200 |
-| A-28 | 权限：未激活账号 | I | P0 | 待补 | 拒绝账号功能 |
-| A-29 | 动态翻译 | I | P1 | 现有 | 语言切换后文本变化 |
-| A-30 | 表单额外字段/自定义基类 | I | P1 | 现有 | 字段存在/渲染 |
-| A-31 | 一对多搜索计数 | I | P0 | 待补 | 分页总数不重复（对应 C2） |
-| A-32 | URL 特殊字符 | I | P1 | 待补 | 搜索词含 `&`/空格/中文仍正确（对应 C6） |
-| A-33 | 列表空结果/越界页 | I | P1 | 待补 | 200，空列表，页数合理 |
+| TC-ADMIN-001 | 列表列渲染 | I | P0 | 现有 | 列名/值正确 |
+| TC-ADMIN-002 | 默认分页 | I | P0 | 现有 | 页大小、页数、记录数 |
+| TC-ADMIN-003 | 可配置页大小白名单 | I | P0 | 现有 | 非白名单回退默认 |
+| TC-ADMIN-004 | 无分页（page_size=0） | I | P1 | 现有 | 返回全部 |
+| TC-ADMIN-005 | 排序（升/降/关联） | I | P0 | 现有 | 顺序正确 |
+| TC-ADMIN-006 | 默认排序 | I | P1 | 现有 | 无参数时按默认 |
+| TC-ADMIN-007 | 搜索（普通/关联/无关联行） | I | P0 | 现有 | 命中/不命中 |
+| TC-ADMIN-008 | 搜索保留额外参数 | I | P1 | 现有 | 隐藏字段保留 |
+| TC-ADMIN-009 | 筛选操作符 | I | P0 | 现有 | 7 种文本操作、数值/日期/布尔 |
+| TC-ADMIN-010 | 关联列筛选 | I | P1 | 现有 | 关联表过滤正确 |
+| TC-ADMIN-011 | CRUD | I | P0 | 现有 | 创建/编辑/删除 + DB 状态 |
+| TC-ADMIN-012 | 详情页 | I | P1 | 现有 | 字段值正确 |
+| TC-ADMIN-013 | CSV 导出 | I | P1 | 现有 | 内容/表头 |
+| TC-ADMIN-014 | 导出最大行数 | I | P2 | 待补 | 超限行为 |
+| TC-ADMIN-015 | 其他导出类型 | I | P2 | 待补 | tablib 支持类型 |
+| TC-ADMIN-016 | 行内编辑 | I | P1 | 现有 | 列表页保存 |
+| TC-ADMIN-017 | 批量删除 | I | P0 | 现有 | 选中记录删除 |
+| TC-ADMIN-018 | Inline 创建/编辑/删除 | I | P0 | 现有 | 父子记录最终状态 |
+| TC-ADMIN-019 | Inline 一对多/多对多/一对一 | I | P1 | 现有 | 关系正确 |
+| TC-ADMIN-020 | Inline 多外键 | I | P1 | 现有 | 关系映射正确 |
+| TC-ADMIN-021 | Inline + AJAX 外键 | I | P0 | 待补 | 页面 200，能搜索/保存（对应 C1） |
+| TC-ADMIN-022 | AJAX 外键/多对多 | I | P1 | 现有 | 返回 JSON 正确 |
+| TC-ADMIN-023 | 复合主键 | I | P1 | 现有 | 列表/删除正确 |
+| TC-ADMIN-024 | 字符串主键 | I | P1 | 现有 | 列表/删除正确 |
+| TC-ADMIN-025 | 权限：匿名 | I | P0 | 待补/部分 | 默认 403（加 @login_required 时重定向） |
+| TC-ADMIN-026 | 权限：普通用户 | I | P0 | 待补/部分 | 403 |
+| TC-ADMIN-027 | 权限：admin | I | P0 | 现有 | 200 |
+| TC-ADMIN-028 | 权限：未激活账号 | I | P0 | 待补 | 拒绝账号功能 |
+| TC-ADMIN-029 | 动态翻译 | I | P1 | 现有 | 语言切换后文本变化 |
+| TC-ADMIN-030 | 表单额外字段/自定义基类 | I | P1 | 现有 | 字段存在/渲染 |
+| TC-ADMIN-031 | 一对多搜索计数 | I | P0 | 待补 | 分页总数不重复（对应 C2） |
+| TC-ADMIN-032 | URL 特殊字符 | I | P1 | 待补 | 搜索词含 `&`/空格/中文仍正确（对应 C6） |
+| TC-ADMIN-033 | 列表空结果/越界页 | I | P1 | 待补 | 200，空列表，页数合理 |
+
+补充测试缺口（2026-11-07 快照，现状待核实）：
+
+- 自定义 `DataBackend` 缺少单元测试。
+- V-02 涉及的单行操作与批量操作渲染/执行缺少专门测试；`test_actions.py` 的历史记录以行内编辑和批量删除为主。
+- 视图编辑开关 `can_edit=False` 的 AJAX 更新边界另见第 7.5 节 SEC-19；不能把普通行内编辑用例当成该边界已覆盖。
 
 ### 7.4 Forms
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| F-01 | JSON 合法/非法/空 | U | P0 | 现有 | 解析/错误 |
-| F-02 | 日期/时间/日期时间字段 | U | P0 | 现有 | 解析/格式化 |
-| F-03 | 文件字段无输入 | U | P0 | 现有 | 不报错/None |
-| F-04 | 文件上传/多文件 | U | P0 | 现有 | 保存/读取 |
-| F-05 | 图片上传 | U | P1 | 现有 | 类型/尺寸 |
-| F-06 | 必填文件 | U | P1 | 现有 | 缺失报错 |
-| F-07 | FieldList / FormField | U | P1 | 现有 | 子表单数据 |
-| F-08 | CSRF 开启 | U | P0 | 现有 | token 存在/校验通过 |
-| F-09 | CSRF 关闭 | U | P1 | 现有 | 不生成/不校验 |
-| F-10 | CSRF 缺失/篡改/过期 | U | P0 | 待补 | 分别报错 |
-| F-11 | CSRF 独立派生密钥 | U | P1 | 现有 | 不等于主密钥 |
-| F-12 | `wrap_formdata` JSON/files | U | P1 | 待补 | 正确合并 |
-| F-13 | Unique 校验器 | I | P1 | 现有（间接） | 重复值报错 |
-| F-14 | Recaptcha（mock） | U | P2 | 待补 | 成功/失败 |
-| F-15 | InlineModelField | U | P1 | 待补 | 子表单渲染/取值 |
-| F-16 | Widget 渲染 | U | P2 | 待补 | Bootstrap 类/属性 |
-| F-17 | i18n 标签/错误 | I | P2 | 部分 | 语言切换 |
+| TC-FORM-001 | JSON 合法/非法/空 | U | P0 | 现有 | 解析/错误 |
+| TC-FORM-002 | 日期/时间/日期时间字段 | U | P0 | 现有 | 解析/格式化 |
+| TC-FORM-003 | 文件字段无输入 | U | P0 | 现有 | 不报错/None |
+| TC-FORM-004 | 文件上传/多文件 | U | P0 | 现有 | 保存/读取 |
+| TC-FORM-005 | 图片上传 | U | P1 | 现有 | 类型/尺寸 |
+| TC-FORM-006 | 必填文件 | U | P1 | 现有 | 缺失报错 |
+| TC-FORM-007 | FieldList / FormField | U | P1 | 现有 | 子表单数据 |
+| TC-FORM-008 | CSRF 开启 | U | P0 | 现有 | token 存在/校验通过 |
+| TC-FORM-009 | CSRF 关闭 | U | P1 | 现有 | 不生成/不校验 |
+| TC-FORM-010 | CSRF 缺失/篡改/过期 | U | P0 | 待补 | 分别报错 |
+| TC-FORM-011 | CSRF 独立派生密钥 | U | P1 | 现有 | 不等于主密钥 |
+| TC-FORM-012 | `wrap_formdata` JSON/files | U | P1 | 待补 | 正确合并 |
+| TC-FORM-013 | Unique 校验器 | I | P1 | 现有（间接） | 重复值报错 |
+| TC-FORM-014 | Recaptcha（mock） | U | P2 | 待补 | 成功/失败 |
+| TC-FORM-015 | InlineModelField | U | P1 | 待补 | 子表单渲染/取值 |
+| TC-FORM-016 | Widget 渲染 | U | P2 | 待补 | Bootstrap 类/属性 |
+| TC-FORM-017 | i18n 标签/错误 | I | P2 | 部分 | 语言切换 |
+
+`TC-FORM-010` 另需覆盖 HTTP 请求中缺失、篡改和过期 token 的边界；该层级待补，不能以基础表单测试代替。
 
 ### 7.5 Security
 
@@ -988,114 +1058,131 @@ class UserFactory(factory.Factory):
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| S-01 | 不同 purpose 派生不同 key | U | P0 | 现有 | key 不相等且不等于主密钥 |
-| S-02 | 哈希正确/错误 | U | P0 | 现有 | verify True/False |
-| S-03 | AES-GCM 加解密 | U | P0 | 待补 | 往返一致 |
-| S-04 | 密文篡改 | U | P0 | 待补 | 解密失败 |
-| S-05 | 序列化有效 | U | P0 | 现有 | 数据一致 |
-| S-06 | 序列化过期 | U | P0 | 待补（现有注释） | `expired=True` |
-| S-07 | 序列化篡改/错误 salt | U | P0 | 待补 | `invalid=True` |
-| S-08 | 邮箱验证令牌 | I | P0 | 现有 | 验证成功/重复失败 |
-| S-09 | 改邮箱令牌 | I | P0 | 现有（部分） | 旧邮箱/密码变化后失效；密码变更后令牌失效待补 |
-| S-10 | 重置密码令牌 | I | P0 | 现有（间接） | 成功/过期/无效 |
-| S-11 | 令牌用户不存在 | U | P1 | 待补 | `TokenUserNotFoundError` |
-| S-12 | 授权：admin | U | P0 | 现有 | 允许 |
-| S-13 | 授权：普通用户/无角色 | U | P0 | 现有 | 拒绝 |
-| S-14 | `allow_access` 公开视图 | U | P0 | 现有 | 允许 |
-| S-15 | `requires_active` 未激活 | U | P0 | 现有 | 拒绝 |
-| S-16 | TFA 生成/校验 | U | P0 | 现有（弱） | 正确码通过，错误码失败 |
-| S-17 | TFA 恢复码 | U | P0 | 待补 | 一次性使用/失效 |
-| S-18 | TFA 待验证不能访问 | I | P0 | 现有 | 重定向/401 |
-| S-19 | 密码变更使会话失效 | I | P0 | 现有 | 旧 session 失效 |
-| S-20 | 安全重定向 | U | P0 | 现有 | 外部/畸形 URL 拒绝 |
-| S-21 | JWT 编解码/过期/畸形 | I | P1 | 现有 | 正确/异常 |
+| TC-SEC-001 | 不同 purpose 派生不同 key | U | P0 | 现有 | key 不相等且不等于主密钥 |
+| TC-SEC-002 | 哈希正确/错误 | U | P0 | 现有 | verify True/False |
+| TC-SEC-003 | AES-GCM 加解密 | U | P0 | 待补 | 往返一致 |
+| TC-SEC-004 | 密文篡改 | U | P0 | 待补 | 解密失败 |
+| TC-SEC-005 | 序列化有效 | U | P0 | 现有 | 数据一致 |
+| TC-SEC-006 | 序列化过期 | U | P0 | 待补（现有注释） | `expired=True` |
+| TC-SEC-007 | 序列化篡改/错误 salt | U | P0 | 待补 | `invalid=True` |
+| TC-SEC-008 | 邮箱验证令牌 | I | P0 | 现有 | 验证成功/重复失败 |
+| TC-SEC-009 | 改邮箱令牌 | I | P0 | 现有（部分） | 旧邮箱/密码变化后失效；密码变更后令牌失效待补 |
+| TC-SEC-010 | 重置密码令牌 | I | P0 | 现有（间接） | 成功/过期/无效 |
+| TC-SEC-011 | 令牌用户不存在 | U | P1 | 待补 | `TokenUserNotFoundError` |
+| TC-SEC-012 | 授权：admin | U | P0 | 现有 | 允许 |
+| TC-SEC-013 | 授权：普通用户/无角色 | U | P0 | 现有 | 拒绝 |
+| TC-SEC-014 | `allow_access` 公开视图 | U | P0 | 现有 | 允许 |
+| TC-SEC-015 | `requires_active` 未激活 | U | P0 | 现有 | 拒绝 |
+| TC-SEC-016 | TFA 生成/校验 | U | P0 | 现有（弱） | 正确码通过，错误码失败 |
+| TC-SEC-017 | TFA 恢复码 | U | P0 | 待补 | 一次性使用/失效 |
+| TC-SEC-018 | TFA 待验证不能访问 | I | P0 | 现有 | 重定向/401 |
+| TC-SEC-019 | 密码变更使会话失效 | I | P0 | 现有 | 旧 session 失效 |
+| TC-SEC-020 | 安全重定向 | U | P0 | 现有 | 外部/畸形 URL 拒绝 |
+| TC-SEC-021 | JWT 编解码/过期/畸形 | I | P1 | 现有 | 正确/异常 |
+
+补充场景与测试建议（2026-11-07 快照，现状待核实；风险编号不是测试编号）：
+
+- `AesGcmEncryptor` 除往返和篡改外还需验证错误密钥；序列化过期/篡改可使用可控时间或短 `max_age`。
+- `TC-SEC-009` 的历史测试主要覆盖确认成功和密码校验；密码变化后旧改邮箱令牌失效的边界待补。
+- SEC-01：构造 `admin` 且 `is_active=False`，断言受保护操作被拒；旧快照预期该测试先失败。
+- SEC-02：启用 TFA 的用户使用 Bearer token 访问受保护资源时，验证不能绕过第二因子。
+- SEC-03：限流/锁定须先明确由应用或反向代理负责，再设计对应测试；可添加集成测试桩。
+- SEC-04：核实 `TFA_EXEMPT_ENDPOINTS` 是否实现，若实现则补测试，否则从配置文档移除并说明。
+- SEC-07：设计密钥轮换及 TOTP 数据迁移测试；快照中迁移实现待补。
+- SEC-12：配置安全 Cookie 后断言 `Set-Cookie` 的 `Secure`、`HttpOnly` 和 `SameSite`。
+- SEC-16：禁用、重新启用 TFA 后断言旧恢复码被拒。
+- SEC-17：模拟 SMTP，确认使用校验证书与主机名的 SSL context。
+- SEC-18：模拟 logger，断言 warning 不含令牌和链接。
+- SEC-19 / V-01：`can_edit=False` 且配置 `column_editable_list` 时，断言 `ajax_update` 被拒；两个编号指向同一问题。
+
+上述风险场景尚未在此单独分配 TC 编号；不能凭风险编号或已有文件推断测试实现和执行结果。
 
 ### 7.6 UserStore
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| U-01 | 创建用户 | I | P0 | 现有 | id/username/email |
-| U-02 | 重复用户名 | I | P0 | 现有 | `UserAlreadyExistsError` |
-| U-03 | 重复邮箱 | I | P0 | 现有 | `UserAlreadyExistsError` |
-| U-04 | 登录成功 | I | P0 | 现有 | 返回用户 |
-| U-05 | 登录失败（用户不存在/密码错） | I | P0 | 现有 | `InvalidCredentialsError` |
-| U-06 | dummy hash 抗枚举 | I | P1 | 待补 | 不存在用户也执行校验 |
-| U-07 | 按 id/identity/username 查询 | I | P0 | 现有 | 正确用户 |
-| U-08 | `identity_name` 切换 | I | P1 | 现有 | 按 username 查 |
-| U-09 | 角色创建/关联 | I | P0 | 现有 | 角色列表 |
-| U-10 | `user_set` 更新 | I | P1 | 待补 | 属性持久化 |
-| U-11 | `save_user` | I | P1 | 待补 | 更新持久化 |
-| U-12 | `get_users` 过滤 | I | P1 | 待补 | 按条件筛选（对应 C3） |
-| U-13 | `remove_user` | I | P1 | 待补 | 删除或明确抛错（对应 C4） |
-| U-14 | profile 一对一 | I | P1 | 待补 | 关联正确 |
-| U-15 | 密码哈希 | I | P0 | 现有 | 明文不落库 |
+| TC-USER-001 | 创建用户 | I | P0 | 现有 | id/username/email |
+| TC-USER-002 | 重复用户名 | I | P0 | 现有 | `UserAlreadyExistsError` |
+| TC-USER-003 | 重复邮箱 | I | P0 | 现有 | `UserAlreadyExistsError` |
+| TC-USER-004 | 登录成功 | I | P0 | 现有 | 返回用户 |
+| TC-USER-005 | 登录失败（用户不存在/密码错） | I | P0 | 现有 | `InvalidCredentialsError` |
+| TC-USER-006 | dummy hash 抗枚举 | I | P1 | 待补 | 不存在用户也执行校验 |
+| TC-USER-007 | 按 id/identity/username 查询 | I | P0 | 现有 | 正确用户 |
+| TC-USER-008 | `identity_name` 切换 | I | P1 | 现有 | 按 username 查 |
+| TC-USER-009 | 角色创建/关联 | I | P0 | 现有 | 角色列表 |
+| TC-USER-010 | `user_set` 更新 | I | P1 | 待补 | 属性持久化 |
+| TC-USER-011 | `save_user` | I | P1 | 待补 | 更新持久化 |
+| TC-USER-012 | `get_users` 过滤 | I | P1 | 待补 | 按条件筛选（对应 C3） |
+| TC-USER-013 | `remove_user` | I | P1 | 待补 | 删除或明确抛错（对应 C4） |
+| TC-USER-014 | profile 一对一 | I | P1 | 待补 | 关联正确 |
+| TC-USER-015 | 密码哈希 | I | P0 | 现有 | 明文不落库 |
 
 ### 7.7 UserCenter
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| UC-01 | 注册成功 | I/E | P0 | 现有 | 用户创建 + 发验证邮件 |
-| UC-02 | 重复邮箱/用户名 | I | P0 | 现有 | 错误提示 |
-| UC-03 | 登录成功 | I/E | P0 | 现有 | 重定向/会话 |
-| UC-04 | 登录失败 | I | P0 | 现有 | 统一错误，不枚举 |
-| UC-05 | 未激活登录 | I | P0 | 现有 | 按设计处理 |
-| UC-06 | 登出 | I/E | P0 | 现有 | 会话清理 |
-| UC-07 | 资料页需登录 | I | P0 | 现有 | 重定向登录 |
-| UC-08 | 邮箱验证 | I/E | P0 | 现有 | `email_verified=True` |
-| UC-09 | 重发验证邮件 | I | P1 | 现有 | 发送一次 |
-| UC-10 | 改邮箱需密码 | I | P0 | 现有 | 密码错拒绝 |
-| UC-11 | 改邮箱需确认 | I/E | P0 | 现有 | 点击链接后生效 |
-| UC-12 | 改邮箱重复 | I | P1 | 现有 | 拒绝 |
-| UC-13 | 改密码 | I/E | P0 | 现有 | 新密码可登录，旧密码失败 |
-| UC-14 | 找回密码 | I/E | P0 | 现有 | 发邮件 |
-| UC-15 | 重置密码 | I/E | P0 | 现有 | 新密码生效 |
-| UC-16 | 恢复码 | I | P0 | 现有 | 登录成功/码失效 |
-| UC-17 | TFA 启用/关闭 | I | P0 | 现有（部分） | `tfa_enabled` 变化 |
-| UC-18 | TFA 登录完整流程 | E | P0 | 待补 | 密码→验证码→登录 |
-| UC-19 | TFA 待验证不能绕过 | I | P0 | 现有 | 受保护页拒绝 |
-| UC-20 | 未激活账号功能限制 | I | P0 | 现有 | 账号功能拒绝 |
-| UC-21 | 开放重定向 | I | P0 | 待补 | `next` 外部 URL 被拒 |
-| UC-22 | 重复提交/并发注册 | I | P2 | 待补 | 唯一约束生效 |
+| TC-AUTH-001 | 注册成功 | I/E | P0 | 现有 | 用户创建 + 发验证邮件 |
+| TC-AUTH-002 | 重复邮箱/用户名 | I | P0 | 现有 | 错误提示 |
+| TC-AUTH-003 | 登录成功 | I/E | P0 | 现有 | 重定向/会话 |
+| TC-AUTH-004 | 登录失败 | I | P0 | 现有 | 统一错误，不枚举 |
+| TC-AUTH-005 | 未激活登录 | I | P0 | 现有 | 按设计处理 |
+| TC-AUTH-006 | 登出 | I/E | P0 | 现有 | 会话清理 |
+| TC-AUTH-007 | 资料页需登录 | I | P0 | 现有 | 重定向登录 |
+| TC-AUTH-008 | 邮箱验证 | I/E | P0 | 现有 | `email_verified=True` |
+| TC-AUTH-009 | 重发验证邮件 | I | P1 | 现有 | 发送一次 |
+| TC-AUTH-010 | 改邮箱需密码 | I | P0 | 现有 | 密码错拒绝 |
+| TC-AUTH-011 | 改邮箱需确认 | I/E | P0 | 现有 | 点击链接后生效 |
+| TC-AUTH-012 | 改邮箱重复 | I | P1 | 现有 | 拒绝 |
+| TC-AUTH-013 | 改密码 | I/E | P0 | 现有 | 新密码可登录，旧密码失败 |
+| TC-AUTH-014 | 找回密码 | I/E | P0 | 现有 | 发邮件 |
+| TC-AUTH-015 | 重置密码 | I/E | P0 | 现有 | 新密码生效 |
+| TC-AUTH-016 | 恢复码 | I | P0 | 现有 | 登录成功/码失效 |
+| TC-AUTH-017 | TFA 启用/关闭 | I | P0 | 现有（部分） | `tfa_enabled` 变化 |
+| TC-AUTH-018 | TFA 登录完整流程 | E | P0 | 待补 | 密码→验证码→登录 |
+| TC-AUTH-019 | TFA 待验证不能绕过 | I | P0 | 现有 | 受保护页拒绝 |
+| TC-AUTH-020 | 未激活账号功能限制 | I | P0 | 现有 | 账号功能拒绝 |
+| TC-AUTH-021 | 开放重定向 | I | P0 | 待补 | `next` 外部 URL 被拒 |
+| TC-AUTH-022 | 重复提交/并发注册 | I | P2 | 待补 | 唯一约束生效 |
 
 ### 7.8 Emailer
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| M-01 | 信号触发发送 | U | P0 | 现有 | sender 收到 data |
-| M-02 | 缺少 `type` | U | P1 | 待补 | warning，不发送 |
-| M-03 | 未知 sender | U | P1 | 待补 | warning，不抛 |
-| M-04 | SMTP 成功（mock） | U | P1 | 现有（基础） | 调用成功 |
-| M-05 | SMTP 异常 | U | P1 | 待补 | `SmtpError` 处理 |
-| M-06 | 重复注册 sender | U | P1 | 待补 | `ValueError` |
-| M-07 | 默认 sender 配置存在/缺失 | U | P1 | 待补 | 注册/不注册 |
-| M-08 | 验证邮件/重置邮件内容 | I | P1 | 待补 | 主题/链接/收件人 |
-| M-09 | `email_change` 复用 `verify_email` sender | I | P0 | 待补 | 收件人为新邮箱，链接指向 `confirm_email_change` |
+| TC-EMAIL-001 | 信号触发发送 | U | P0 | 现有 | sender 收到 data |
+| TC-EMAIL-002 | 缺少 `type` | U | P1 | 待补 | warning，不发送 |
+| TC-EMAIL-003 | 未知 sender | U | P1 | 待补 | warning，不抛 |
+| TC-EMAIL-004 | SMTP 成功（mock） | U | P1 | 现有（基础） | 调用成功 |
+| TC-EMAIL-005 | SMTP 异常 | U | P1 | 待补 | `SmtpError` 处理 |
+| TC-EMAIL-006 | 重复注册 sender | U | P1 | 待补 | `ValueError` |
+| TC-EMAIL-007 | 默认 sender 配置存在/缺失 | U | P1 | 待补 | 注册/不注册 |
+| TC-EMAIL-008 | 验证邮件/重置邮件内容 | I | P1 | 待补 | 主题/链接/收件人 |
+| TC-EMAIL-009 | `email_change` 复用 `verify_email` sender | I | P0 | 待补 | 收件人为新邮箱，链接指向 `confirm_email_change` |
 
 ### 7.9 Frontend
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| FE-01 | 插件自动发现 | U | P0 | 现有（间接） | 注册表包含内置插件 |
-| FE-02 | 重复插件名 | U | P0 | 现有 | `ValueError` |
-| FE-03 | 默认插件顺序 | U | P0 | 现有 | 输入顺序保留 |
-| FE-04 | 请求插件依赖排序 | U | P0 | 现有 | 依赖在前 |
-| FE-05 | 循环依赖 | U | P0 | 现有 | `PluginCycleError` |
-| FE-06 | 未知插件 | U | P1 | 待补 | `ValueError` |
-| FE-07 | 样式/脚本拼接顺序 | U | P1 | 现有 | 依赖顺序 + `Markup` |
-| FE-08 | Jinja 全局变量 | I | P0 | 现有 | `_template`/`csrf_token` |
-| FE-09 | 模板集成 | I | P1 | 待补 | 页面包含插件资源 |
-| FE-10 | vendor 资源存在 | U | P2 | 待补 | 关键文件存在 |
+| TC-FRONTEND-001 | 插件自动发现 | U | P0 | 现有（间接） | 注册表包含内置插件 |
+| TC-FRONTEND-002 | 重复插件名 | U | P0 | 现有 | `ValueError` |
+| TC-FRONTEND-003 | 默认插件顺序 | U | P0 | 现有 | 输入顺序保留 |
+| TC-FRONTEND-004 | 请求插件依赖排序 | U | P0 | 现有 | 依赖在前 |
+| TC-FRONTEND-005 | 循环依赖 | U | P0 | 现有 | `PluginCycleError` |
+| TC-FRONTEND-006 | 未知插件 | U | P1 | 待补 | `ValueError` |
+| TC-FRONTEND-007 | 样式/脚本拼接顺序 | U | P1 | 现有 | 依赖顺序 + `Markup` |
+| TC-FRONTEND-008 | Jinja 全局变量 | I | P0 | 现有 | `_template`/`csrf_token` |
+| TC-FRONTEND-009 | 模板集成 | I | P1 | 待补 | 页面包含插件资源 |
+| TC-FRONTEND-010 | vendor 资源存在 | U | P2 | 待补 | 关键文件存在 |
 
 ### 7.10 Commands
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| CLI-01 | `datastore create_all` | I | P1 | 待补 | 表创建 |
-| CLI-02 | `datastore drop_all` | I | P1 | 待补 | 表删除 |
-| CLI-03 | `security create_user` | I | P1 | 待补 | 用户创建 |
-| CLI-04 | 重复用户 | I | P1 | 待补 | 错误提示 |
-| CLI-05 | `--active` / `--email` | I | P1 | 待补 | 属性正确 |
-| CLI-06 | 命令注册/帮助 | I | P2 | 待补 | 命令可见 |
+| TC-CLI-001 | `datastore create_all` | I | P1 | 待补 | 表创建 |
+| TC-CLI-002 | `datastore drop_all` | I | P1 | 待补 | 表删除 |
+| TC-CLI-003 | `security create_user` | I | P1 | 待补 | 用户创建 |
+| TC-CLI-004 | 重复用户 | I | P1 | 待补 | 错误提示 |
+| TC-CLI-005 | `--active` / `--email` | I | P1 | 待补 | 属性正确 |
+| TC-CLI-006 | 命令注册/帮助 | I | P2 | 待补 | 命令可见 |
 
 CLI 测试写法：
 
@@ -1128,41 +1215,41 @@ def test_cli_create_user(app):
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| TX-01 | 正常提交后数据持久化 | I | P0 | 待补 | 重新查询可见 |
-| TX-02 | 视图异常时回滚 | I | P0 | 待补 | 无部分写入 |
-| TX-03 | `IntegrityError` 后 session 可复用 | I | P0 | 待补 | `rollback()` 后可继续查询/写入 |
-| TX-04 | 级联删除（`cascade="all, delete-orphan"`） | I | P1 | 待补 | 子记录一并删除 |
-| TX-05 | 受限删除（无级联） | I | P1 | 待补 | 抛 `IntegrityError` 或按设计拒绝 |
-| TX-06 | 外键完整性 | I | P0 | 待补 | 非法外键被拒绝（SQLite 需 `PRAGMA foreign_keys=ON`） |
-| TX-07 | 唯一约束 | I | P0 | 待补 | 重复用户名/邮箱被拒绝 |
-| TX-08 | 并发更新/丢失更新 | I | P2 | 待补 | 记录当前行为，不假设乐观锁 |
-| TX-09 | 一对多增删后计数一致 | I | P0 | 待补 | `count` 与根记录数一致（对应 C2） |
+| TC-DATA-019 | 正常提交后数据持久化 | I | P0 | 待补 | 重新查询可见 |
+| TC-DATA-020 | 视图异常时回滚 | I | P0 | 待补 | 无部分写入 |
+| TC-DATA-021 | `IntegrityError` 后 session 可复用 | I | P0 | 待补 | `rollback()` 后可继续查询/写入 |
+| TC-DATA-022 | 级联删除（`cascade="all, delete-orphan"`） | I | P1 | 待补 | 子记录一并删除 |
+| TC-DATA-023 | 受限删除（无级联） | I | P1 | 待补 | 抛 `IntegrityError` 或按设计拒绝 |
+| TC-DATA-024 | 外键完整性 | I | P0 | 待补 | 非法外键被拒绝（SQLite 需 `PRAGMA foreign_keys=ON`） |
+| TC-DATA-025 | 唯一约束 | I | P0 | 待补 | 重复用户名/邮箱被拒绝 |
+| TC-DATA-026 | 并发更新/丢失更新 | I | P2 | 待补 | 记录当前行为，不假设乐观锁 |
+| TC-DATA-027 | 一对多增删后计数一致 | I | P0 | 待补 | `count` 与根记录数一致（对应 C2） |
 
-> SQLite 默认不启用外键约束。测试 TX-06 前必须显式执行 `PRAGMA foreign_keys=ON`，否则会“假通过”。
+> SQLite 默认不启用外键约束。测试 TC-DATA-024 前必须显式执行 `PRAGMA foreign_keys=ON`，否则会“假通过”。
 
 ### 7.12 错误处理与信号契约
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| ERR-01 | 未知路由 404 | I | P1 | 待补 | 状态码 404，模板可渲染 |
-| ERR-02 | 无权限 403 | I | P0 | 待补 | 普通用户访问 admin 被拒 |
-| ERR-03 | 方法不允许 405 | I | P2 | 待补 | 状态码 405 |
-| ERR-04 | 未捕获异常 | I | P2 | 待补 | `TESTING=True` 下异常上抛；生产配置下 500 页 |
-| ERR-05 | 无效/过期令牌页 | I | P0 | 待补 | 友好错误，不泄露用户信息 |
-| ERR-06 | 畸形表单数据 | I | P1 | 待补 | 400/表单错误，不 500 |
-| ERR-07 | 未知导出类型 | I | P2 | 待补 | 明确错误，不崩溃 |
-| ERR-08 | CSRF 校验失败 | I | P0 | 待补 | 拒绝提交，提示可理解 |
+| TC-ERROR-001 | 未知路由 404 | I | P1 | 待补 | 状态码 404，模板可渲染 |
+| TC-ERROR-002 | 无权限 403 | I | P0 | 待补 | 普通用户访问 admin 被拒 |
+| TC-ERROR-003 | 方法不允许 405 | I | P2 | 待补 | 状态码 405 |
+| TC-ERROR-004 | 未捕获异常 | I | P2 | 待补 | `TESTING=True` 下异常上抛；生产配置下 500 页 |
+| TC-ERROR-005 | 无效/过期令牌页 | I | P0 | 待补 | 友好错误，不泄露用户信息 |
+| TC-ERROR-006 | 畸形表单数据 | I | P1 | 待补 | 400/表单错误，不 500 |
+| TC-ERROR-007 | 未知导出类型 | I | P2 | 待补 | 明确错误，不崩溃 |
+| TC-ERROR-008 | CSRF 校验失败 | I | P0 | 待补 | 拒绝提交，提示可理解 |
 
 信号契约：
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| SIG-01 | `user_registered` 载荷 | U | P0 | 待补 | `user` 为刚创建用户 |
-| SIG-02 | `verify_email` 邮件字段 | U | P0 | 待补 | `type=verify_email`、`email`、`verification_token`、`verification_link` |
-| SIG-03 | `reset_password` 邮件字段 | U | P0 | 待补 | `type=reset_password`、`email`、`reset_password_token`、`reset_password_link` |
-| SIG-04 | `email_change` 邮件字段 | U | P0 | 待补 | `type=verify_email`、`email`（新邮箱）、`verification_token`、`verification_link` |
-| SIG-05 | 未注册 sender | U | P1 | 待补 | warning，不抛异常 |
-| SIG-06 | sender 抛 `SmtpError` | U | P1 | 待补 | 被捕获，返回提示 |
+| TC-SIGNAL-001 | `user_registered` 载荷 | U | P0 | 待补 | `user` 为刚创建用户 |
+| TC-SIGNAL-002 | `verify_email` 邮件字段 | U | P0 | 待补 | `type=verify_email`、`email`、`verification_token`、`verification_link` |
+| TC-SIGNAL-003 | `reset_password` 邮件字段 | U | P0 | 待补 | `type=reset_password`、`email`、`reset_password_token`、`reset_password_link` |
+| TC-SIGNAL-004 | `email_change` 邮件字段 | U | P0 | 待补 | `type=verify_email`、`email`（新邮箱）、`verification_token`、`verification_link` |
+| TC-SIGNAL-005 | 未注册 sender | U | P1 | 待补 | warning，不抛异常 |
+| TC-SIGNAL-006 | sender 抛 `SmtpError` | U | P1 | 待补 | 被捕获，返回提示 |
 
 > `email_change` 复用 `type=verify_email`，但收件人是新邮箱；断言时结合 `email` 或 token 键区分，不能只按 `type` 判断。
 
@@ -1170,12 +1257,12 @@ def test_cli_create_user(app):
 
 | ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
 | --- | --- | --- | --- | --- | --- |
-| I18N-01 | 默认语言 | I | P1 | 待补 | 按 `BABEL_DEFAULT_LOCALE` 渲染 |
-| I18N-02 | `?lang=zh` 切换 | I | P1 | 待补 | 文本变为中文，cookie/session 生效 |
-| I18N-03 | 不支持语言回退 | I | P1 | 待补 | 回退默认语言，不报错 |
-| I18N-04 | 时区渲染 | I | P2 | 待补 | 按 `BABEL_DEFAULT_TIMEZONE` 输出 |
-| I18N-05 | 复数形式 | U | P2 | 待补 | 单复数选择正确 |
-| I18N-06 | 缺失翻译回退 | U | P2 | 待补 | 回退 msgid，不抛异常 |
+| TC-I18N-001 | 默认语言 | I | P1 | 待补 | 按 `BABEL_DEFAULT_LOCALE` 渲染 |
+| TC-I18N-002 | `?lang=zh` 切换 | I | P1 | 待补 | 文本变为中文，cookie/session 生效 |
+| TC-I18N-003 | 不支持语言回退 | I | P1 | 待补 | 回退默认语言，不报错 |
+| TC-I18N-004 | 时区渲染 | I | P2 | 待补 | 按 `BABEL_DEFAULT_TIMEZONE` 输出 |
+| TC-I18N-005 | 复数形式 | U | P2 | 待补 | 单复数选择正确 |
+| TC-I18N-006 | 缺失翻译回退 | U | P2 | 待补 | 回退 msgid，不抛异常 |
 
 ## 8. 端到端测试方案
 
@@ -1192,20 +1279,20 @@ Selenium/Playwright 属于第二种。建议先用 HTTP 级 E2E 覆盖业务旅�
 
 | ID | 流程 | 步骤 | 关键断言 |
 | --- | --- | --- | --- |
-| E2E-AUTH-01 | 注册 → 验证 → 登录 | 注册 → 捕获邮件 → 访问验证链接 → 登录 | 用户激活、登录成功、资料页可访问 |
-| E2E-AUTH-02 | 登录 → TFA → 访问 | 登录（密码）→ 跳转 TFA → 输入 TOTP → 访问受保护页 | TFA 前拒绝、TFA 后 200 |
-| E2E-AUTH-03 | 找回 → 重置 → 登录 | 提交邮箱 → 捕获链接 → 设置新密码 → 登录 | 新密码成功、旧密码失败 |
-| E2E-AUTH-04 | 改邮箱 | 登录 → 改邮箱 → 捕获确认链接 → 访问 → 用新邮箱登录 | 旧邮箱失效、新邮箱生效 |
-| E2E-AUTH-05 | 恢复码登录 | 启用 TFA → 登出 → 用恢复码登录 | 成功、恢复码失效 |
-| E2E-ADMIN-01 | Admin CRUD | 登录 admin → 创建 → 编辑 → 删除 | 列表/DB 状态 |
-| E2E-ADMIN-02 | 搜索/筛选/排序/分页 | 造数据 → 访问带参数 URL | 结果正确、计数正确 |
-| E2E-ADMIN-03 | Inline | 创建父+子 → 编辑 → 删除子 | 父子状态 |
-| E2E-ADMIN-04 | 导出 | 访问导出 URL | CSV 内容/表头 |
-| E2E-ADMIN-05 | 权限 | 匿名/普通/admin/未激活 | 重定向/403/200 |
-| E2E-ADMIN-06 | Inline + AJAX 外键 | 配置子模型 `ajax_refs` → 打开创建页 → 搜索 → 保存 | 页面 200、JSON 正确、父子落库（对应 C1） |
-| E2E-AUTH-06 | 令牌重复/过期 | 使用已验证/已过期链接再次访问 | 友好提示，不重复生效 |
-| E2E-ERR-01 | 错误页 | 访问不存在路由、无权限路由 | 404/403 页面可渲染 |
-| E2E-I18N-01 | 语言切换 | 带 `?lang=zh` 访问 | 文本语言变化 |
+| TC-AUTH-023 | 注册 → 验证 → 登录 | 注册 → 捕获邮件 → 访问验证链接 → 登录 | 用户激活、登录成功、资料页可访问 |
+| TC-AUTH-024 | 登录 → TFA → 访问 | 登录（密码）→ 跳转 TFA → 输入 TOTP → 访问受保护页 | TFA 前拒绝、TFA 后 200 |
+| TC-AUTH-025 | 找回 → 重置 → 登录 | 提交邮箱 → 捕获链接 → 设置新密码 → 登录 | 新密码成功、旧密码失败 |
+| TC-AUTH-026 | 改邮箱 | 登录 → 改邮箱 → 捕获确认链接 → 访问 → 用新邮箱登录 | 旧邮箱失效、新邮箱生效 |
+| TC-AUTH-027 | 恢复码登录 | 启用 TFA → 登出 → 用恢复码登录 | 成功、恢复码失效 |
+| TC-ADMIN-034 | Admin CRUD | 登录 admin → 创建 → 编辑 → 删除 | 列表/DB 状态 |
+| TC-ADMIN-035 | 搜索/筛选/排序/分页 | 造数据 → 访问带参数 URL | 结果正确、计数正确 |
+| TC-ADMIN-036 | Inline | 创建父+子 → 编辑 → 删除子 | 父子状态 |
+| TC-ADMIN-037 | 导出 | 访问导出 URL | CSV 内容/表头 |
+| TC-ADMIN-038 | 权限 | 匿名/普通/admin/未激活 | 重定向/403/200 |
+| TC-ADMIN-039 | Inline + AJAX 外键 | 配置子模型 `ajax_refs` → 打开创建页 → 搜索 → 保存 | 页面 200、JSON 正确、父子落库（对应 C1） |
+| TC-AUTH-028 | 令牌重复/过期 | 使用已验证/已过期链接再次访问 | 友好提示，不重复生效 |
+| TC-ERROR-009 | 错误页 | 访问不存在路由、无权限路由 | 404/403 页面可渲染 |
+| TC-I18N-007 | 语言切换 | 带 `?lang=zh` 访问 | 文本语言变化 |
 
 ### 8.3 HTTP E2E 示例
 
@@ -1705,39 +1792,39 @@ jobs:
 
 #### Phase 1：Unit 补强（第 1 周）
 
-- [ ] D-12/D-13/D-14：Query 搜索语义、过滤操作符、一对多计数
-- [ ] S-03/S-04/S-06/S-07/S-17：加密、序列化过期/篡改、TFA 恢复码
-- [ ] U-12/U-13：`get_users`、`remove_user`
-- [ ] M-02/M-03/M-05/M-06/M-07：Emailer 错误路径
-- [ ] CLI-01～CLI-06：Commands（含 `test_cli_runner` 示例）
-- [ ] F-10/F-12/F-15：CSRF 边界、formdata、InlineModelField
-- [ ] TX-01～TX-09：事务、级联、外键、唯一约束
-- [ ] SIG-01～SIG-06：信号载荷与 sender 错误
-- [ ] I18N-01～I18N-06：语言、时区、复数、回退
+- [ ] TC-DATA-012/TC-DATA-013/TC-DATA-014：Query 搜索语义、过滤操作符、一对多计数
+- [ ] TC-SEC-003/TC-SEC-004/TC-SEC-006/TC-SEC-007/TC-SEC-017：加密、序列化过期/篡改、TFA 恢复码
+- [ ] TC-USER-012/TC-USER-013：`get_users`、`remove_user`
+- [ ] TC-EMAIL-002/TC-EMAIL-003/TC-EMAIL-005/TC-EMAIL-006/TC-EMAIL-007：Emailer 错误路径
+- [ ] TC-CLI-001～TC-CLI-006：Commands（含 `test_cli_runner` 示例）
+- [ ] TC-FORM-010/TC-FORM-012/TC-FORM-015：CSRF 边界、formdata、InlineModelField
+- [ ] TC-DATA-019～TC-DATA-027：事务、级联、外键、唯一约束
+- [ ] TC-SIGNAL-001～TC-SIGNAL-006：信号载荷与 sender 错误
+- [ ] TC-I18N-001～TC-I18N-006：语言、时区、复数、回退
 
 **验收：** 新增 P0/P1 用例通过；关键路径 unit 覆盖补齐。
 
 #### Phase 2：Integration 补强（第 2 周）
 
-- [ ] A-21：Inline + AJAX 外键（先写失败测试，修复 C1）
-- [ ] A-31：一对多搜索计数（修复 C2）
-- [ ] A-25/A-26/A-28：权限矩阵
-- [ ] A-14/A-15：导出边界与类型
-- [ ] A-32/A-33：URL 特殊字符、空结果/越界页
-- [ ] UC-18/UC-21：TFA 完整流程、开放重定向
-- [ ] M-08：邮件内容
-- [ ] ERR-01～ERR-08：404/403/405/500、令牌错误、CSRF 失败
-- [ ] TX-04～TX-09：级联/约束在集成层的最终状态
+- [ ] TC-ADMIN-021：Inline + AJAX 外键（先写失败测试，修复 C1）
+- [ ] TC-ADMIN-031：一对多搜索计数（修复 C2）
+- [ ] TC-ADMIN-025/TC-ADMIN-026/TC-ADMIN-028：权限矩阵
+- [ ] TC-ADMIN-014/TC-ADMIN-015：导出边界与类型
+- [ ] TC-ADMIN-032/TC-ADMIN-033：URL 特殊字符、空结果/越界页
+- [ ] TC-AUTH-018/TC-AUTH-021：TFA 完整流程、开放重定向
+- [ ] TC-EMAIL-008：邮件内容
+- [ ] TC-ERROR-001～TC-ERROR-008：404/403/405/500、令牌错误、CSRF 失败
+- [ ] TC-DATA-022～TC-DATA-027：级联/约束在集成层的最终状态
 
-**验收：** 主文档第 7 章 P0/P1 缺陷均有回归测试。
+**验收：** 验收清单中已确认需修复的 P0/P1 缺陷均有回归测试；View/Admin 与安全问题分别参照 `spec.md` 第 10.16 节和 `security.md` 第 11 节。
 
 #### Phase 3：HTTP E2E（第 3 周）
 
 - [ ] 创建 `tests/e2e/` 与 `conftest.py`
-- [ ] E2E-AUTH-01～06
-- [ ] E2E-ADMIN-01～06
-- [ ] E2E-ERR-01
-- [ ] E2E-I18N-01
+- [ ] TC-AUTH-023～TC-AUTH-028
+- [ ] TC-ADMIN-034～TC-ADMIN-039
+- [ ] TC-ERROR-009
+- [ ] TC-I18N-007
 - [ ] 统一使用 `mail_outbox`、`url_for` 与真实登录路由
 
 **验收：** 10–20 个 E2E 流程通过；覆盖注册/登录/TFA/重置/改邮箱/Admin CRUD。
@@ -1773,8 +1860,8 @@ jobs:
 | 测试框架 | pytest + 插件 | pytest + pytest-cov | 按需引入 benchmark/browser |
 | 测试目录 | unit/integration/e2e/performance | unit/integration | 按 Phase 创建 |
 | Fixtures | app/client/db/user/admin/auth | 已有 app/client/admin/login_as_admin | 补 db_setup/user_factory/mail_outbox |
-| 数据库事务 | 有设计 | 0 | 新增 TX-01～TX-09 |
-| 错误处理 | 未明确 | 0 | 新增 ERR-01～ERR-08 |
+| 数据库事务 | 有设计 | 0 | 新增 TC-DATA-019～TC-DATA-027 |
+| 错误处理 | 未明确 | 0 | 新增 TC-ERROR-001～TC-ERROR-008 |
 | CI/CD | 集成 | 基础测试，无文档/覆盖率门禁 | Phase 4 补 |
 | 测试文档 | 完整 | 本文 v0.1 | 已补齐；按 Phase 0 升 v1.0 |
 
@@ -1904,15 +1991,15 @@ def test_something(app, client):
 
 **测试覆盖**
 
-- [ ] 主文档第 7 章 P0/P1 缺陷均有回归测试
+- [ ] 验收清单中已确认需修复的 P0/P1 缺陷均有回归测试；View/Admin 与安全问题分别参照 `spec.md` 第 10.16 节和 `security.md` 第 11 节
 - [ ] 关键路径 100% 覆盖（第 10 节清单）
 - [ ] 行覆盖率 ≥ 85%，分支 ≥ 75%，函数 ≥ 90%（基于基线调整）
 - [ ] HTTP E2E 10–20 个核心流程
 - [ ] 性能基准 10–15 个，基线记录
-- [ ] TX-01～TX-09：事务、级联、外键、唯一约束
-- [ ] ERR-01～ERR-08：错误页与异常路径
-- [ ] SIG-01～SIG-06：邮件/信号载荷契约
-- [ ] I18N-01～I18N-06：语言、时区、复数、回退
+- [ ] TC-DATA-019～TC-DATA-027：事务、级联、外键、唯一约束
+- [ ] TC-ERROR-001～TC-ERROR-008：错误页与异常路径
+- [ ] TC-SIGNAL-001～TC-SIGNAL-006：邮件/信号载荷契约
+- [ ] TC-I18N-001～TC-I18N-006：语言、时区、复数、回退
 - [ ] PostgreSQL 夜间矩阵至少覆盖计数、外键、大小写搜索
 
 **质量门禁**
@@ -1927,7 +2014,7 @@ def test_something(app, client):
 
 - [ ] 顶部“文档版本/最后更新/数据快照”与实际一致
 - [ ] 1.5 统计脚本可重复执行，数字与仓库一致
-- [ ] 6.2 需求追溯矩阵覆盖全部关键契约
+- [ ] 关键契约的验收字段均有明确映射或待补说明，并已核对其测试设计与证据
 - [ ] 所有示例标注“现有/待补/目标”，不把规划写成现状
 - [ ] 新增 fixture/测试模式有示例
 - [ ] 目标对照表更新
@@ -1952,14 +2039,14 @@ def test_something(app, client):
 - 新增/删除测试目录、fixture、marker 或测试依赖
 - 覆盖率基线、性能基线变化
 - CI 门禁或 Python 版本矩阵调整
-- `spec.md` 中的契约、模块边界或公开 API 变化
-- 修复主文档第 7 章缺陷，或新增已知缺陷
+- `requirements.md` 中的契约，或 `spec.md` 中的模块边界、公开 API 变化
+- 修复已知缺陷或新增缺陷，包括 `spec.md` 第 10.16 节及 `security.md` 第 11 节中的问题
 - 测试策略、分层或验收标准变化
 
 ### 17.2 更新步骤
 
 1. 运行 1.5 的统计脚本，更新 1.1/1.2 数字与顶部“数据快照”日期。
-2. 更新 6.1 模块覆盖矩阵与 6.2 需求追溯矩阵。
+2. 更新 6.1 模块覆盖矩阵；按需更新 6.2 章节导航，并在各契约“验收”字段维护具体追溯映射。
 3. 更新 7.x 用例状态（现有/待补/待修），新增缺陷对应用例。
 4. 更新 10.5 覆盖率基线、9.7 性能基线。
 5. 更新 14 测试债务、16 验收标准。
@@ -1969,7 +2056,8 @@ def test_something(app, client):
 
 | 文档 | 用途 |
 | --- | --- |
-| [`spec.md`](./spec.md) | 文档驱动：架构、行为契约、边界、审查清单 |
+| [`requirements.md`](./requirements.md) | 行为契约与验收依据 |
+| [`spec.md`](./spec.md) | 项目设计背景和 View/Admin 领域说明 |
 | `testing.md`（本文） | 测试驱动：策略、用例、执行、门禁 |
 | `flask-exts/AGENTS.md` | 开发规范、变更边界、命令 |
 | `flask-exts/docs/testing.rst` | 项目内英文测试说明（与本文互补） |

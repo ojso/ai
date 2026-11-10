@@ -6,10 +6,10 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-08 |
+> | 最后更新 | 2026-11-09 |
 > | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
 > | 适用目录 | `flask-exts/examples/demo` |
-> | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`security.md`（安全）、`view.md`（View/Admin） |
+> | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现及 View/Admin）、`requirements.md`（契约）、`testing.md`（测试）、`security.md`（安全） |
 >
 > **定位**：`examples/demo` 是**可运行的参考应用**，不是生产模板。它用尽量少的代码展示 Flask-Exts 的模型、Admin、Inline、筛选、排序、导出、AJAX、递归关系和自定义模板能力。修改 demo 时优先保证“能运行、能看懂、不引入额外依赖”。
 
@@ -337,7 +337,7 @@ def phone_number(cls):
 
 ## 5. Admin 视图
 
-> View/ModelView/SqlaModelView 的完整配置、DataBackend、Inline、AJAX、导出与已知问题见 [`view.md`](./view.md)。本章只说明 demo 中的实际用法；完整 demo 类以本章与 `examples/demo` 为主，`view.md` 只保留最小 API 片段。
+> View/ModelView/SqlaModelView 的配置、DataBackend、Inline、AJAX、导出与已知问题见 [`spec.md` 第 10 章](./spec.md#10-view-与-admin-专题)。本章只说明 demo 中的实际用法；完整 demo 类以本章与 `examples/demo` 为主，`spec.md` 第 10 章只保留最小 API 片段。
 
 ### 5.1 注册方式
 
@@ -460,11 +460,11 @@ class PostView(SqlaModelView):
 - **AJAX 外键**：`ajax_refs` 只配置了 `author`；`tags` 的配置在注释中，需要时可打开。
 - **字段描述**：`column_descriptions` 会显示在表单/详情提示中。
 
-> 排序、搜索、内联编辑与导出选项的语义见 `view.md` 第 7.5–7.7、11 章；本节只保留 demo 的实际取值，不重复解释。
+> 排序、搜索、内联编辑与导出选项的语义见 `spec.md` 第 10.7.5～10.7.7、10.11 节；本节只保留 demo 的实际取值，不重复解释。
 
 ### 5.5 自定义过滤器
 
-demo 中的 `FilterNameBrown` 与 `view.md` 第 7.4 节的示例一致，完整代码见 `views/post_view.py`；本章不重复。
+demo 中的 `FilterNameBrown` 与 `spec.md` 第 10.7.4 节的示例一致，完整代码见 `views/post_view.py`；本章不重复。
 
 要点：
 
@@ -475,7 +475,7 @@ demo 中的 `FilterNameBrown` 与 `view.md` 第 7.4 节的示例一致，完整�
 
 ### 5.6 `TreeView`：自定义模板与传参
 
-完整实现见 `view.md` 第 14.2 节、`views/tree_view.py` 与 `templates/tree_list.html`；本章不重复。
+最小示例见 `spec.md` 第 10.14.2 节；完整 demo 实现见 `views/tree_view.py` 与 `templates/tree_list.html`；本章不重复。
 
 要点：
 
@@ -554,7 +554,7 @@ Flask 会先找应用自己的 `templates/`，再找扩展提供的模板。demo
 
 ### 6.5 自定义页面（非模型视图）
 
-如果只想加一个说明页/仪表盘，不需要 `SqlaModelView`。完整示例见 `view.md` 第 0.2 节；本章不重复代码。
+如果只想加一个说明页/仪表盘，不需要 `SqlaModelView`。最小示例见 `spec.md` 第 10.0.2 节；本章不重复代码。
 
 - `url="about"` → `/admin/about/`；`url="/about"` → `/about/`（绝对路径，不加 `/admin` 前缀）。
 - `allow_access = True` 可让整个视图公开；否则需要 admin 角色。
@@ -774,12 +774,12 @@ class ParentView(SqlaModelView):
 注意：
 
 - 子模型必须有指向父模型的外键/关系。
-- 如果 Inline 子模型配置了 `ajax_refs`，当前实现存在已知参数不匹配问题（见主文档第 7 章 C1）；先补测试再修复。
+- 如果 Inline 子模型配置了 `ajax_refs`，当前实现存在已知参数不匹配问题（见 `spec.md` 第 10.16.1 节 C1）；先补测试再修复。
 - Inline 行通过 AJAX 保存，新增父记录后才会出现可编辑行。
 
 ### 9.4 新增 AJAX 外键
 
-`ajax_refs` 的字段语义与完整配置见 `view.md` 第 10 章；demo 的实际取值见 `views/post_view.py`，本节不重复代码。
+`ajax_refs` 的字段语义与完整配置见 `spec.md` 第 10.10 节；demo 的实际取值见 `views/post_view.py`，本节不重复代码。
 
 前提：
 
@@ -795,7 +795,7 @@ class ParentView(SqlaModelView):
 2. 模板 `extends "admin/model/list.html"`，在需要的位置保留 `{{ super() }}`。
 3. 需要向模板传参时覆盖 `render()`，用 `super().render(template, extra="value", **kwargs)`。
 
-最小示例见 `view.md` 第 14.2 节；demo 实例见 `views/tree_view.py` 与 `templates/tree_list.html`。
+最小示例见 `spec.md` 第 10.14.2 节；demo 实例见 `views/tree_view.py` 与 `templates/tree_list.html`。
 
 ### 9.6 新增上传字段
 
@@ -967,13 +967,14 @@ print("demo smoke ok")
 
 | 文档 | 角色 | 与 demo 的关系 |
 | --- | --- | --- |
-| `spec.md` | 文档驱动 | 定义模型、Admin、表单、安全等行为契约；demo 是这些契约的可运行示例 |
+| `requirements.md` | 行为契约 | 定义模型、Admin、表单、安全等行为契约；demo 可用于展示相关用法 |
+| `spec.md` | 设计与领域说明 | 说明项目设计背景及 View/Admin 的实现、配置与已知问题 |
 | `testing.md` | 测试驱动 | 定义测试分层、fixtures、用例；demo 可作为 E2E/手工冒烟的对象 |
 | `demo.md`（本文） | 示例驱动 | 规定 demo 如何组织、运行、扩展和验证 |
 
 推荐工作流：
 
-1. 先在 `spec.md` 确认/更新契约；
+1. 先在 `requirements.md` 确认/更新契约，并按需同步 `spec.md` 等领域说明；
 2. 在 `testing.md` 补对应测试或用例；
 3. 在 `examples/demo` 落地可运行示例；
 4. 按本文第 11 章验证；

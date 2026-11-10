@@ -6,10 +6,10 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-08 |
+> | 最后更新 | 2026-11-09 |
 > | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
 > | 适用仓库 | `flask-exts` |
-> | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`demo.md`（示例）、`view.md`（View/Admin） |
+> | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`demo.md`（示例）；View/Admin 见 `spec.md` 第 10 章 |
 >
 > **重要说明**：本文描述的是**当前实现的安全行为与边界**，不是“已通过安全认证”的证明。标记为“风险/待决策”的内容需要结合部署环境评估；涉及代码修改的修复必须先评审、补测试，再实施。
 
@@ -375,7 +375,7 @@ def change_password(self): ...
 
 ### 4.5 Admin 视图
 
-> View/ModelView 的路由与配置见 [`view.md`](./view.md)；本节只讨论访问控制。
+> View/ModelView 的路由与配置见 [`spec.md` 第 10 章](./spec.md#10-view-与-admin-专题)；本节只讨论访问控制。
 
 - `Admin` 默认 URL：`/admin`。
 - 模型视图默认 `allow_access=False`。
@@ -833,43 +833,15 @@ if "Authorization" in request.headers:
 
 ### 12.1 现有安全相关测试
 
-| 测试文件 | 覆盖 |
-| --- | --- |
-| `tests/unit/security/test_authorizer.py` | admin 放行、普通用户拒绝、无角色拒绝、无用户拒绝、`allow_access`、`role_need` |
-| `tests/unit/security/test_tfa.py` | TOTP provisioning URI、生成/校验 |
-| `tests/unit/security/test_urls.py` | 外部/畸形重定向拒绝、本地路径放行 |
-| `tests/integration/security/test_core.py` | 密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效 |
-| `tests/integration/usercenter/test_user_view.py` | 注册、重复邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、TFA 启用/关闭/登录/防绕过、inactive 账号、改密码、找回/重置、恢复码 |
-| `tests/unit/forms/form/test_form.py` | CSRF 生成/校验、派生密钥、关闭 CSRF |
+安全测试文件及覆盖范围的历史快照维护在 [`testing.md` 第 1.2 节](./testing.md#12-现有测试分布)。路径、断言和当前执行情况尚须结合源码核实。
 
 ### 12.2 测试缺口
 
-| 缺口 | 对应 `testing.md` | 建议 |
-| --- | --- | --- |
-| AES-GCM 加解密/篡改 | S-03/S-04 | 增加 `AesGcmEncryptor` 往返、篡改、错误密钥用例 |
-| 序列化过期/篡改 | S-06/S-07 | 用可控时间或短 `max_age` 补测 |
-| 令牌用户不存在 | S-11 | 构造不存在用户的令牌，断言 `TokenUserNotFoundError` |
-| 改邮箱令牌在密码变更后失效 | S-09（当前标记“现有”，但测试主要覆盖确认成功/密码校验） | 补“密码变更后旧令牌失效” |
-| JWT 绕过 TFA | 新增 SEC-02 | 断言启用 TFA 的用户用 Bearer token 访问受保护资源被拒 |
-| 禁用 admin 仍可访问 | 新增 SEC-01 | 构造 `admin` + `is_active=False`，断言应被拒（当前会失败） |
-| 限流/锁定 | SEC-03 | 需先实现或明确由反向代理负责；可加集成测试桩 |
-| CSRF 过期/篡改（HTTP 层） | F-10 | 增加过期/篡改/缺失 token 的请求级测试 |
-| Cookie 安全属性 | SEC-12 | 断言 `Set-Cookie` 的 `Secure/HttpOnly/SameSite`（在配置后） |
-| 密钥轮换/TOTP 迁移 | SEC-07 | 设计迁移测试；当前无实现 |
-| TFA 关闭后旧恢复码仍有效 | 新增 SEC-16 | 断言禁用/重新启用后旧恢复码被拒绝 |
-| SMTP 证书校验 | 新增 SEC-17 | mock SMTP，确认使用校验证书的 SSL context |
-| 邮件日志泄露令牌 | 新增 SEC-18 | mock logger，断言 warning 不含链接/令牌 |
-| 内联编辑绕过 `can_edit` | 新增 SEC-19 | `can_edit=False` + `column_editable_list`，断言 ajax_update 被拒 |
-| `TFA_EXEMPT_ENDPOINTS` | SEC-04 | 实现后补测试，或从文档移除 |
+表单与 CSRF 场景见 [`testing.md` 第 7.4 节](./testing.md#74-forms)，加密、令牌、认证及安全风险相关测试场景见 [`testing.md` 第 7.5 节](./testing.md#75-security)。风险详情以本文第 11 节为准；风险编号不是测试编号，未分配 TC 或未执行的场景不能当作已覆盖。
 
 ### 12.3 运行安全相关测试
 
-```bash
-python -m pytest -q tests/unit/security
-python -m pytest -q tests/integration/security
-python -m pytest -q tests/integration/usercenter/test_user_view.py
-python -m pytest -q tests/unit/forms/form/test_form.py
-```
+命令入口维护在 [`testing.md` 第 0.2 节](./testing.md#02-第一条命令)；应先核实仓库、环境和测试路径，再记录实际结果。
 
 ## 13. 安全运营与响应
 
