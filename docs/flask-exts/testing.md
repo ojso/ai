@@ -7,14 +7,14 @@
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
 > | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；commit 未记录，待补录；未复核，文档集未附带源码快照） |
+> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`；测试清单和统计已复核） |
 > | 适用仓库 | `flask-exts` |
 > | 文档驱动 | `architecture.md`：架构；`spec.md`：设计和实现，第 10 章涵盖 View/Admin 路由、ModelView、DataBackend、Inline、AJAX、导出 |
 > | 行为契约 | `requirements.md`：`REQ-*`、验收标准、追溯 |
 > | 测试驱动 | `testing.md`（本文）：测试策略、用例、执行计划、质量门禁 |
 > | 安全治理 | `security.md`：威胁模型、控制措施、风险清单、发布检查 |
 >
-> **文档状态说明**：本文的“现状”数据来自 2026-11-07 的仓库快照；用例中的 `tests/e2e/`、`tests/performance/`、`mail_outbox` 等属于**目标结构**，当前尚未全部落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为可执行规范。重新统计现状的方法见 1.5。
+> **文档状态说明**：本文的测试目录与数量以 2026-11-10 的 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`，源码/测试中未发现 `mail_outbox`；这些仍属目标结构。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
 >
 > **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文的规划不代表 CI 或测试已实现。
 
@@ -121,6 +121,7 @@ python -m pytest -q tests/unit/forms/form/test_form.py
 | 浏览器测试 | 无 | 未引入 Selenium/Playwright |
 | 基准工具 | 无 | 未引入 `pytest-benchmark` |
 | 数据工厂 | 无 | 未引入 `factory-boy` / `faker` |
+| 最近完整测试运行 | 229 passed, 1 skipped | 2026-11-10；Python 3.13.10；HEAD `171b40968f309c04ae3ad423696227c2767b0055`；跳过 `test_smtp.py`，未配置 `REAL_EMAIL_SENDER` |
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -152,14 +153,15 @@ addopts = "-ra --strict-markers --strict-config"
 | `unit/frontend` | 9 | `test_plugin_manager.py`、`test_base.py`、宏测试 | 覆盖注册、排序、循环依赖、资源拼接 |
 | `commands` | 0 | 无 | CLI 完全未测试 |
 
-#### 1.2.1 Admin 测试文件快照
+#### 1.2.1 Admin 测试文件清单
 
-以下入口及覆盖描述来自 2026-11-07 快照，当前尚未复核；文件名不证明相关断言存在或测试通过。
+以下文件路径已与 2026-11-10 的仓库 HEAD 核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
 
 - `tests/integration/admin/sqla/test_views.py`
 - `tests/integration/admin/sqla/test_forms.py`
 - `tests/integration/admin/sqla/test_search.py`
 - `tests/integration/admin/sqla/test_sorting.py`
+- `tests/integration/admin/sqla/test_translation.py`
 - `tests/integration/admin/sqla/test_pagination.py`
 - `tests/integration/admin/sqla/test_actions.py`
 - `tests/integration/admin/sqla/test_export.py`
@@ -173,10 +175,10 @@ addopts = "-ra --strict-markers --strict-config"
 
 | 缺口 | 影响 | 对应目标 |
 | --- | --- | --- |
-| 无 HTTP 级 E2E 流程测试 | 跨模块流程（注册→验证→登录→TFA）只能靠零散集成测试拼接 | E2E 20+ |
-| 无性能基准 | 无法量化列表查询、搜索、渲染、认证的退化 | 性能 15+ |
-| 无覆盖率基线 | 无法判断“85%”目标是否达到 | 覆盖率 85% |
-| 无 CI 文档构建 | 文档死链/API 漂移不会被拦截 | 验收标准 |
+| 无 HTTP 级 E2E 流程测试 | 跨模块流程（注册→验证→登录→TFA）只能靠零散集成测试拼接 | 目标见第 13 节 |
+| 无性能基准 | 无法量化列表查询、搜索、渲染、认证的退化 | 目标见第 13 节 |
+| 无覆盖率基线 | 无法判断目标是否达到 | 目标见第 13 节 |
+| CI 未检查本套 Markdown 与 demo smoke | 外部文档死链、demo 启动问题不会被现有 CI 捕获 | 仓库 Sphinx 构建已在 `docs.yml`；本套文档的链接检查与 demo smoke 仍待接入 |
 | 一对多搜索计数未断言 | `build_count` 重复计数风险可能潜伏 | 新增 |
 | Inline + AJAX 外键未覆盖 | `create_ajax_loader` 参数缺陷可能未被触发 | 新增 |
 | `UserStore.get_users` / `remove_user` 未覆盖 | 接口契约与实现不一致 | 新增 |
@@ -187,24 +189,11 @@ addopts = "-ra --strict-markers --strict-config"
 
 ### 1.4 与目标基线的差距
 
-规划目标与当前状态对照：
-
-| 目标 | 当前状态 | 差距 |
-| --- | --- | --- |
-| 集成测试 30+ | 已有约 80+ 个集成测试函数 | **已超额完成** |
-| E2E 测试 20+ | 0 | 需新建 `tests/e2e/` |
-| 性能测试 15+ | 0 | 需新建 `tests/performance/` |
-| 代码覆盖率 ≥ 85% | 未测量 | 先建立基线，再设门槛 |
-| 分支覆盖率 ≥ 75% | 未测量 | 同上 |
-| 函数覆盖率 ≥ 90% | 未测量 | 同上 |
-| 关键路径 100% | 未系统定义 | 第 10 节给出清单 |
-| CI/CD 集成 | 有基础测试，无文档/覆盖率门禁 | 需补 CI |
-
-结论：**集成测试不是短板，E2E、性能、覆盖率基线、CI 门禁才是。** 下一阶段不应盲目追求“测试数量”，而应补齐这四类基础设施。
+目标、当前状态与差距统一见第 13 节，本节不重复指标。当前优先事项为 E2E、性能基线、覆盖率测量与 CI 门禁；阶段行动见第 12 节。
 
 ### 1.5 数据快照与重新统计
 
-本文的 46 / 193 / 916 是 2026-11-07 的快照。文档集未附带源码，以下数字**尚未复核**；测试会持续增加，引用数字前先重新统计：
+本文的 46 / 193 / 916 已按 2026-11-10 的 HEAD 重新统计，与上一快照相同。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -236,7 +225,7 @@ PY
 - 文件：`tests/**/test_*.py`
 - 用例：行首 `def test_`（含 `async def test_`）
 - 断言：文本中的 `assert` 关键字，不含 `pytest.raises` 的隐式断言
-- 不统计：fixture、辅助函数、被注释代码
+- 限制：按文本匹配，可能计入注释或字符串中的 `assert`；数量不代表有效断言数或测试质量。
 
 ## 2. 测试策略与分层
 
@@ -256,13 +245,13 @@ PY
 
 建议比例（按数量，不按运行时间）：
 
-| 层级 | 建议占比 | 目标数量 | 运行时间 | 依赖 |
-| --- | ---: | ---: | --- | --- |
-| Unit | ~55% | 110+ | < 5s | 无 Flask 或最小 app |
-| Integration | ~30% | 60+ | < 60s | Flask app + 内存 SQLite |
-| HTTP E2E | ~10% | 20+ | < 60s | Flask test client + 邮件捕获 |
-| Browser E2E | ~3% | 5–10 | 分钟级 | 浏览器 + 运行中的服务 |
-| Performance | ~2% | 10–15 | 分钟级 | 大数据集 + benchmark |
+| 层级 | 建议占比 | 运行时间 | 依赖 |
+| --- | ---: | --- | --- |
+| Unit | ~55% | < 5s | 无 Flask 或最小 app |
+| Integration | ~30% | < 60s | Flask app + 内存 SQLite |
+| HTTP E2E | ~10% | < 60s | Flask test client + 邮件捕获 |
+| Browser E2E | ~3% | 分钟级 | 浏览器 + 运行中的服务 |
+| Performance | ~2% | 分钟级 | 大数据集 + benchmark |
 
 ### 2.2 各层职责
 
@@ -832,7 +821,7 @@ class UserFactory(factory.Factory):
 
 | 模块 | Unit | Integration | HTTP E2E | Performance | 主要缺口 |
 | --- | :---: | :---: | :---: | :---: | --- |
-| Extension 系统 | ✅ | ⏳ | ❌ | ❌ | 晚注册、shutdown 异常隔离已有；E2E 不需要 |
+| Extension 系统 | ✅ | ⏳ | ❌ | ❌ | 晚注册待补；shutdown 异常隔离与现有测试行为冲突（C11）；E2E 不需要 |
 | Datastore / Query | ✅ | ⏳ | ❌ | ⏳ | 计数正确性、N+1、复杂过滤 |
 | Admin 基础 | ✅ | ✅ | ⏳ | ❌ | 权限矩阵、导出类型、URL 特殊字符 |
 | Admin Inline | ⏳ | ✅ | ⏳ | ❌ | Inline + AJAX 外键、复杂关系 |
@@ -890,7 +879,7 @@ class UserFactory(factory.Factory):
 4. 测试不存在、不能执行或未覆盖某条边界时分别登记缺口；不要将“已设计”写成“已验证”。
 5. 按 `requirements.md` 第 2 节分别维护 `implementation`、`verification` 和问题关联；所有适用验收通过并记录契约修订、代码版本、环境、范围及结果后，才能标 `passed`。
 
-例如 `REQ-AUTHZ-005` 的未复核快照关联 SEC-01：应先确认契约和受影响代码，再设计禁用管理员访问被拒的用例，按实际结果记录失败与修复证据；源码不可见时，当前状态及该缺口均待核实，不代表问题已关闭。
+例如 `REQ-AUTHZ-005` 关联 SEC-01：本轮 HEAD 静态源码仍显示 inactive admin 会被放行，但未运行针对性回归用例。应按契约设计禁用管理员访问被拒的测试，并记录真实执行结果；全套测试通过不等于该缺口已关闭。
 
 ### 6.3 测试用例编号规则
 
@@ -942,7 +931,7 @@ class UserFactory(factory.Factory):
 | TC-EXT-002 | 重复名称注册 | U | P0 | 现有 | 抛 `ExtensionError`，消息含名称 |
 | TC-EXT-003 | 非 Extension 类注册 | U | P0 | 现有 | 抛 `ExtensionError` |
 | TC-EXT-004 | 非法名称（空/非 ASCII/特殊字符） | U | P0 | 现有 | 抛 `ExtensionError` |
-| TC-EXT-005 | 依赖先于被依赖初始化 | U | P0 | 现有 | 记录顺序中依赖在前 |
+| TC-EXT-005 | 依赖项先于依赖者初始化 | U | P0 | 现有 | 依赖项在记录顺序中先于依赖者 |
 | TC-EXT-006 | 无依赖扩展保持注册顺序 | U | P1 | 现有 | 顺序稳定 |
 | TC-EXT-007 | 深链依赖 A→B→C | U | P1 | 现有 | C→B→A |
 | TC-EXT-008 | 缺失依赖 | U | P0 | 现有 | 抛 `ExtensionNotFoundError` |
@@ -953,7 +942,7 @@ class UserFactory(factory.Factory):
 | TC-EXT-013 | `post_init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
 | TC-EXT-014 | `post_init` 按依赖顺序 | U | P1 | 现有 | 顺序正确 |
 | TC-EXT-015 | `shutdown` 逆序 | U | P0 | 现有 | 与初始化相反 |
-| TC-EXT-016 | `shutdown` 单扩展异常隔离 | U | P1 | 现有 | 其他扩展仍关闭，产生 warning |
+| TC-EXT-016 | `shutdown` 单扩展异常隔离 | U | P1 | 现有测试与契约冲突 | 预期应继续关闭其他扩展并产生 warning；当前 `tests/unit/extension_core/test_registry.py::test_shutdown_exception` 断言 `ValueError` 传播，见 C11 |
 | TC-EXT-017 | 内置扩展图可初始化 | I | P0 | 现有 | 所有内置扩展初始化成功 |
 | TC-EXT-018 | Admin 收集 Portal/UserCenter 视图 | I | P0 | 现有 | 视图注册到 admin |
 | TC-EXT-019 | 晚注册扩展 | U | P2 | 待补 | 文档化行为：不回溯扫描 |
@@ -1112,8 +1101,8 @@ class UserFactory(factory.Factory):
 | TC-USER-009 | 角色创建/关联 | I | P0 | 现有 | 角色列表 |
 | TC-USER-010 | `user_set` 更新 | I | P1 | 待补 | 属性持久化 |
 | TC-USER-011 | `save_user` | I | P1 | 待补 | 更新持久化 |
-| TC-USER-012 | `get_users` 过滤 | I | P1 | 待补 | 按条件筛选（对应 C3） |
-| TC-USER-013 | `remove_user` | I | P1 | 待补 | 删除或明确抛错（对应 C4） |
+| TC-USER-012 | `get_users` 过滤 | I | P1 | 待补 | 按条件筛选（问题编号待核实） |
+| TC-USER-013 | `remove_user` | I | P1 | 待补 | 删除或明确抛错（问题编号待核实） |
 | TC-USER-014 | profile 一对一 | I | P1 | 待补 | 关联正确 |
 | TC-USER-015 | 密码哈希 | I | P0 | 现有 | 明文不落库 |
 
@@ -1266,6 +1255,8 @@ def test_cli_create_user(app):
 
 ## 8. 端到端测试方案
 
+> **状态声明**：本章为目标设计/规划草案。当前仓库不存在 `tests/e2e/` 目录或端到端测试用例；本章用例在落地并接入运行前仅作为测试设计参考。
+
 ### 8.1 两种 E2E
 
 | 方式 | 工具 | 优点 | 缺点 | 建议 |
@@ -1405,6 +1396,8 @@ CI 中仅在 nightly 或手动触发，失败保存截图/HTML。
 - 失败时保存截图、页面 HTML、浏览器 console 日志。
 
 ## 9. 性能测试方案
+
+> **状态声明**：本章为目标设计/规划草案。当前仓库不存在 `tests/performance/` 目录或性能基准用例；依赖项（如 `pytest-benchmark`）尚未引入，相关指标待首测落地后建立。
 
 ### 9.1 目标
 
@@ -1571,14 +1564,9 @@ def test_no_obvious_memory_leak(app, client):
 
 ### 10.1 覆盖率指标
 
-| 指标 | 当前 | 目标 | 说明 |
-| --- | --- | --- | --- |
-| 行覆盖率 | 未测量 | ≥ 85% | 首要目标 |
-| 分支覆盖率 | 未测量 | ≥ 75% | 条件分支 |
-| 函数覆盖率 | 未测量 | ≥ 90% | 公共 API |
-| 关键路径 | 未系统统计 | 100% | 见第 6 节清单 |
+覆盖率目标与当前状态统一见第 13 节；本节只说明测量与门禁方法。
 
-**第一步不是设 85%，而是先测出真实基线。** 历史报告中的 ~70% 不可直接采信。
+**先测真实基线再设门槛。** 历史报告中的 ~70% 不可直接采信。
 
 ### 10.2 命令
 
@@ -1643,7 +1631,7 @@ skip_covered = true
 
 | 日期 | commit | 行覆盖 | 分支覆盖 | 函数覆盖 | 命令 | 备注 |
 | --- | --- | ---: | ---: | ---: | --- | --- |
-| 2026-11-07 | 未记录 | 待测 | 待测 | 待测 | `coverage run -m pytest -q` | 初始基线 |
+| 2026-11-10 | `171b40968f309c04ae3ad423696227c2767b0055` | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 首次实测基线（229 passed, 1 skipped；全套 31.81s） |
 
 规则：
 
@@ -1664,6 +1652,8 @@ skip_covered = true
 不要为了让数字好看而排除业务模块；任何新增排除项都必须在本表登记。
 
 ## 11. CI 流水线
+
+> **状态声明**：当前仓库仅有 Sphinx 文档构建（`.github/workflows/docs.yml`）与发行构建 workflow，**没有**自动运行测试套件的 workflow。本章列出的全流程测试流水线为规划草案，不代表仓库已有实现。
 
 ### 11.1 阶段设计
 
@@ -1711,7 +1701,7 @@ python -m pytest -q tests/e2e -m e2e
 python -m pytest -q tests/performance -m performance
 ```
 
-### 11.3 GitHub Actions 草案
+### 11.3 测试工作流草案（未落地）
 
 ```yaml
 name: tests
@@ -1848,12 +1838,14 @@ jobs:
 
 ## 13. 测试目标与现状对照
 
+本表是测试目标与快照状态的唯一维护位置；当前状态引用前按第 1.5 节复核，阶段行动见第 12 节。
+
 | 项目 | 目标 | 当前真实状态 | 本方案动作 |
 | --- | --- | --- | --- |
 | 集成测试 | 30+ | 约 80+ 个集成测试函数，已超额 | 不再追求数量，补关键缺口 |
-| E2E 测试 | 20+ | 0 | Phase 3 建 `tests/e2e/`，先做 10–20 个 HTTP E2E |
-| 性能测试 | 15+ | 0 | Phase 4 建 `tests/performance/`，先做 10–15 个 |
-| 覆盖率 | ≥85% | 未测量 | Phase 0 测基线，Phase 4 设门槛 |
+| E2E 测试 | 20+ | 0 | Phase 3 在 `tests/e2e/` 覆盖核心旅程；阶段验收见第 12 节 |
+| 性能测试 | 15+ | 0 | Phase 4 建 `tests/performance/` 并建立基线；阶段行动见第 12 节 |
+| 覆盖率 | ≥85% | 90%（2026-11-10 实测） | 已达标，作为基线监控防退化 |
 | 分支覆盖 | ≥75% | 未测量 | 同上 |
 | 函数覆盖 | ≥90% | 未测量 | 同上 |
 | 关键路径 | 100% | 未系统定义 | 第 6/10 节已列清单 |
@@ -1993,9 +1985,9 @@ def test_something(app, client):
 
 - [ ] 验收清单中已确认需修复的 P0/P1 缺陷均有回归测试；View/Admin 与安全问题分别参照 `spec.md` 第 10.16 节和 `security.md` 第 11 节
 - [ ] 关键路径 100% 覆盖（第 10 节清单）
-- [ ] 行覆盖率 ≥ 85%，分支 ≥ 75%，函数 ≥ 90%（基于基线调整）
-- [ ] HTTP E2E 10–20 个核心流程
-- [ ] 性能基准 10–15 个，基线记录
+- [ ] 覆盖率达到第 13 节目标，并基于已测基线设置门槛
+- [ ] HTTP E2E 达到第 13 节目标并覆盖核心旅程
+- [ ] 性能测试达到第 13 节目标并记录可复现基线
 - [ ] TC-DATA-019～TC-DATA-027：事务、级联、外键、唯一约束
 - [ ] TC-ERROR-001～TC-ERROR-008：错误页与异常路径
 - [ ] TC-SIGNAL-001～TC-SIGNAL-006：邮件/信号载荷契约

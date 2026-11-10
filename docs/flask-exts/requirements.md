@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（首批 49 条） |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-09 |
-> | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
+> | 最后更新 | 2026-11-10 |
+> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`testing.md`（测试）、`demo.md`（示例）、`security.md`（安全）；View/Admin 见 `spec.md` 第 10 章 |
 >
@@ -52,10 +52,7 @@ def test_login_success_creates_session(app, client, user_factory):
 
 ### 0.2 改行为时
 
-1. 先判断是“契约错”还是“实现错”。
-2. 契约错：按修订和审批流程更新本文，保留已批准基线及历史，再改测试与实现。
-3. 实现错：保留契约，先写失败测试，再修代码。
-4. 不允许直接把代码现状抄进本文来“消除冲突”。
+按 [`AGENTS.md` 第 3 节](./AGENTS.md#3-事实源与冲突处理)处理契约与实现冲突；修改契约时保留已批准基线及历史，不以代码现状替代预期行为。
 
 ## 1. 契约格式与编号
 
@@ -81,7 +78,7 @@ REQ-<领域>-<序号>
 
 ### 1.2 条目模板
 
-每条契约包含：
+每条契约需包含下表所列信息。状态字段默认值为 `lifecycle=unknown`、`implementation=unknown`、`verification=unverified`；条目可省略默认状态，非默认状态必须显式记录。
 
 | 字段 | 要求 |
 | --- | --- |
@@ -185,20 +182,12 @@ REQ-<领域>-<序号>
 
 ### 2.4 冲突处理
 
-当“本文说 A、代码做 B”时：
-
-1. 判断哪边错：契约错，还是实现偏离契约。
-2. 契约错：按修订和审批流程更新本文，保留已批准基线及历史，再改测试/实现。
-3. 实现错：保留契约，先写失败测试，再修代码。
-4. 已确认实现不满足且无法立即修复：在“关联”字段记录问题及风险，按证据分别更新实现与验证状态，并在 `testing.md` 标“待补/待修”；尚未确认的写“待核实”，不推断现状。
+按 [`AGENTS.md` 第 3 节](./AGENTS.md#3-事实源与冲突处理)处理。契约的生命周期、实现与验证状态仍以本节前述状态定义为准；未核实事实标“待核实”。
 
 ## 3. 扩展生命周期
 
 ### REQ-EXT-001 扩展注册与名称校验
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无
 - **输入**：`Extension` 子类
 - **行为**：注册扩展；名称必须唯一、非空、ASCII 合法；重复名称拒绝
@@ -210,12 +199,9 @@ REQ-<领域>-<序号>
 
 ### REQ-EXT-002 依赖顺序与依赖错误
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：扩展声明 `dependencies`
 - **输入**：扩展注册顺序、依赖图
-- **行为**：依赖先于被依赖初始化；无依赖扩展保持注册顺序；缺失依赖/循环依赖/自依赖拒绝
+- **行为**：若扩展 A 依赖扩展 B，则 B 先于 A 初始化；无依赖扩展保持注册顺序；缺失依赖/循环依赖/自依赖拒绝
 - **输出/副作用**：初始化顺序稳定
 - **错误**：缺失依赖抛 `ExtensionNotFoundError`；循环/自依赖抛 `ExtensionDependencyError`
 - **不变量**：任何扩展都不会在依赖之前初始化
@@ -224,9 +210,6 @@ REQ-<领域>-<序号>
 
 ### REQ-EXT-003 两阶段初始化幂等与顺序
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：扩展已注册
 - **输入**：`init_app` / `post_init`
 - **行为**：`init_app` 先于 `post_init`；两阶段各自幂等；`post_init` 按依赖顺序执行
@@ -238,28 +221,25 @@ REQ-<领域>-<序号>
 
 ### REQ-EXT-004 关闭顺序与异常隔离
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：扩展已初始化
 - **输入**：`shutdown`
 - **行为**：按初始化逆序关闭；单个扩展关闭异常不阻止其他扩展关闭
 - **输出/副作用**：资源释放；产生 warning
 - **错误**：单扩展异常被隔离
 - **不变量**：关闭后不残留已绑定资源
+- **implementation**：`in-progress`（当前 Registry 仅捕获 `ExtensionError`，其他普通异常会中断关闭循环）
+- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055`；现有 `test_shutdown_exception` 断言 `ValueError` 传播，与本契约相反；完整套件运行结果见 `testing.md` 第 1.1 节）
+- **本轮实现观察**：源码位于 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all`；测试入口为 `tests/unit/extension_core/test_registry.py::test_shutdown_exception`，问题关联 C11。
 - **验收**：`testing.md` TC-EXT-015/TC-EXT-016；`tests/unit/extension_core/test_manager.py`
-- **关联**：`spec.md` 第 11.4.3 节
+- **关联**：`spec.md` 第 11.4.3 节 C11；`testing.md` TC-EXT-016 现有断言与契约冲突
 
 ## 4. 数据库与查询
 
 ### REQ-DATA-001 单例绑定、会话与释放
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：Flask app 配置 `SQLALCHEMY_DATABASE_URI`
 - **输入**：`db.init_app(app)` / `db.dispose()` / app context
-- **行为**：`db` 是单应用单例；绑定后 `db.session` 在 app context 内复用；重复绑定未 dispose 的 app 报错；dispose 后允许重新绑定；`reset_all()` 删表重建
+- **行为**：默认导出的模块级 `db` 是一个 `SqlaDb` 实例；每个实例同一时刻绑定一个 app，绑定后 `db.session` 在 app context 内复用；未 dispose 时重复绑定抛错，dispose 后允许重新绑定；`reset_all()` 删表重建
 - **输出/副作用**：engine/session 绑定到当前 app
 - **错误**：缺少 URI/重复绑定抛 `RuntimeError`
 - **不变量**：一个 `db` 实例同一时刻只绑定一个 app；上下文结束后 session 被移除
@@ -268,9 +248,6 @@ REQ-<领域>-<序号>
 
 ### REQ-DATA-002 Query 的 JOIN、搜索、筛选与排序
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：SQLAlchemy 模型与关系
 - **输入**：列路径、搜索词、过滤操作符、排序字段
 - **行为**：关系路径自动 JOIN 并复用 alias；`=` 精确、`^` 前缀、`$` 后缀、否则包含；过滤支持 `==`/`!=`/`>`/`<`/`like`/`in`/`between`/`is_null` 等；排序支持单列/多列
@@ -284,23 +261,17 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-001 登录成功建立会话
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户存在、密码正确、账号可登录、CSRF 通过
 - **输入**：`username`、`password`、可选 `next`
 - **行为**：校验密码哈希；`tfa_enabled=False` 时调用 `login_user(force=True)`；渲染/重定向到 `next` 或 `/user/index/`
 - **输出/副作用**：session 中存在 `_user_id`；HTTP 302
 - **错误**：无（失败见 `REQ-AUTH-002`）
 - **不变量**：密码明文不落库、不进日志；`next` 必须经过安全重定向
-- **验收**：`testing.md` TC-AUTH-003；历史记录引用 `tests/integration/usercenter/test_user_view.py::test_register`，该测试是否断言登录成功建立会话待查看源码核实，不能仅凭名称或引用视为覆盖。
+- **验收**：`testing.md` TC-AUTH-003；实测入口为 `tests/integration/usercenter/test_user_view.py::TestUserView.register_and_login_user` 夹具，明确断言登录后 `session` 包含 `_user_id`。
 - **关联**：`spec.md` 4.4；`security.md` 3.1
 
 ### REQ-AUTH-002 登录失败统一提示
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无
 - **输入**：不存在的用户名 / 错误密码
 - **行为**：不区分“用户不存在/密码错误”；不存在用户也执行 dummy scrypt 校验；不建立 session
@@ -312,9 +283,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-003 TFA 未完成不得建立会话
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户 `tfa_enabled=True`，密码正确
 - **输入**：登录表单
 - **行为**：只写 `pending_tfa_user_id`（及 remember 标记），**不调用** `login_user`；重定向 `/user/verify_tfa/?next=...`
@@ -326,9 +294,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-004 TFA 验证成功完成登录
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：session 中有有效 pending user，用户仍启用 TFA
 - **输入**：正确 TOTP 或恢复码
 - **行为**：验证第二因子；成功后 `login_user(force=True)`；清理 pending；设置 `tfa_verified`；重定向 `next`
@@ -340,9 +305,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-005 密码变更使旧会话失效
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户已登录
 - **输入**：旧密码、新密码、重复新密码
 - **行为**：校验旧密码；保存新哈希；`get_id()` 的密码指纹变化
@@ -354,9 +316,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-006 登出清理认证与 TFA 状态
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户已登录或处于 TFA pending
 - **输入**：`GET /user/logout/`
 - **行为**：调用 `logout_user`；清理 `_user_id`、`tfa_verified`、`tfa_recovery`、pending TFA、rebind pending、remember 标记
@@ -368,9 +327,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-007 未激活账号的访问边界
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户已认证但 `is_active=False`（非 admin）
 - **输入**：访问资料/账号功能
 - **行为**：`profile`/`index` 可访问；`change_password`、`email_change`、`enable_tfa`、`setup_tfa`、`recovery_codes` 被拒绝
@@ -382,9 +338,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-008 安全重定向
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：请求含 `next` / `url` 参数
 - **输入**：任意重定向目标
 - **行为**：只允许本地路径；拒绝绝对 URL、协议相对 URL、反斜杠、编码 `//`、畸形 URL、首字符空白
@@ -398,9 +351,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTHZ-001 admin 角色允许访问 Admin
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户有 `admin` 角色
 - **输入**：访问 Admin 视图
 - **行为**：`SimpleAuthorizer` 放行
@@ -412,9 +362,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTHZ-002 默认拒绝与匿名访问
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无认证或用户无角色
 - **输入**：访问普通 Admin/ModelView
 - **行为**：匿名 ModelView 返回 403；`@login_required` 先重定向登录；无角色普通用户拒绝
@@ -426,9 +373,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTHZ-003 allow_access 公开视图
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：视图设置 `allow_access=True`
 - **输入**：匿名/已登录请求
 - **行为**：允许访问；不再要求 admin/super_admin；`@requires_active` 的方法仍检查 active
@@ -440,9 +384,6 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTHZ-004 requires_active 保护账号功能
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：方法标记 `@requires_active`
 - **输入**：已登录用户请求
 - **行为**：`is_active=False` 时拒绝；`is_active=True` 时继续后续授权
@@ -454,24 +395,20 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTHZ-005 禁用 admin 必须失去 Admin 权限
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户有 `admin` 角色且 `is_active=False`
 - **输入**：访问 Admin/账号功能
 - **行为**：**必须拒绝**；禁用账号不能继续使用高权限
 - **输出/副作用**：403/拒绝
 - **错误**：拒绝
 - **不变量**：`is_active=False` 必须覆盖 `admin` 角色
-- **历史实现观察**（2026-11-07 快照，未复核）：`SimpleAuthorizer` 在 active 检查前短路 admin，**仍放行**
+- **implementation**：`in-progress`（`SimpleAuthorizer.allow` 在 `is_active` 检查前放行 `admin`，禁用管理员仍可访问）
+- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码判定逻辑存在确证缺陷；问题关联 SEC-01）
+- **本轮实现观察**：静态源码确认短路分支存在；待补针对该场景的自动化拒绝测试。
 - **验收**：待补（新增测试将先失败）；关联 `security.md` SEC-01
-- **关联**：`security.md` 4.3；`spec.md` 第 7 章；风险关联 `SEC-01`（2026-11-07 快照，现状待核实）
+- **关联**：`security.md` 4.3；`spec.md` 第 7 章；风险关联 `SEC-01`（本轮 HEAD 静态核对，未专项测试）
 
 ### REQ-AUTHZ-006 role_need 与 super_admin
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户 active
 - **输入**：`role_need` 或 `super_admin` 角色
 - **行为**：`role_need` 匹配放行；`super_admin` 放行；inactive 的非 admin 用户拒绝
@@ -485,9 +422,6 @@ REQ-<领域>-<序号>
 
 ### REQ-REG-001 注册创建激活但未验证邮箱的用户
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户名/邮箱未被占用
 - **输入**：`username`、`password`、`email`、CSRF
 - **行为**：创建用户；密码哈希；`is_active=True`；`email_verified=False`；不自动登录；发送 `user_registered` 信号
@@ -499,37 +433,28 @@ REQ-<领域>-<序号>
 
 ### REQ-REG-002 重复用户名/邮箱拒绝
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户名或邮箱已存在
 - **输入**：注册表单
 - **行为**：拒绝创建；提示重复字段；不产生新用户
 - **输出/副作用**：错误提示；数据库无新记录
 - **错误**：`UserAlreadyExistsError` / 表单错误
 - **不变量**：用户名/邮箱唯一
-- **验收**：`testing.md` TC-AUTH-002；`test_register_rejects_duplicate_email`（用户名重复待补）
+- **验收**：`testing.md` TC-AUTH-002；实测入口为 `tests/integration/usercenter/test_user_view.py::TestUserView.test_register_rejects_duplicate_email`（断言 `Email already exists.`）；注册时用户名重复路径当前缺少自动化用例（测试缺口，待补）。
 - **关联**：`security.md` 5.2
 
 ### REQ-REG-003 邮箱验证令牌
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户有邮箱且未验证
 - **输入**：验证令牌
 - **行为**：校验签名/时间/邮箱哈希/密码哈希；标记 `email_verified=True`、`email_verified_at`；不修改 `is_active`；重复使用返回 `already_verified`
 - **输出/副作用**：用户邮箱状态更新
 - **错误**：过期/无效/用户不存在分别返回错误状态
 - **不变量**：验证邮箱不改变账号 active 状态
-- **验收**：`testing.md` TC-SEC-008；`test_core.py::test_verify_email`、`test_register`（过期边界待补）
+- **验收**：`testing.md` TC-SEC-008；实测入口为 `tests/integration/security/test_core.py::TestSecurityCore.test_verify_email`（断言返回 `verified`、标记 `email_verified=True` 且保持 `is_active=True`，无效令牌抛 `InvalidTokenError`）；HTTP 路由级过期边界待补自动化用例。
 - **关联**：`security.md` 6.3
 
 ### REQ-REG-004 重发验证邮件
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户已登录
 - **输入**：POST `/user/resend_verification/`
 - **行为**：已验证提示；未验证且有邮箱则发送新令牌；无邮箱提示错误
@@ -541,9 +466,6 @@ REQ-<领域>-<序号>
 
 ### REQ-REG-005 改邮箱需要密码与新邮箱确认
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户已登录且 active
 - **输入**：新邮箱、当前密码、CSRF
 - **行为**：校验当前密码；新邮箱格式合法；发送确认链接到新邮箱；确认前旧邮箱继续有效；确认后更新邮箱并标记已验证；重复邮箱拒绝
@@ -555,25 +477,19 @@ REQ-<领域>-<序号>
 
 ### REQ-REG-006 注册邮箱必须是合法邮箱格式
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：注册表单提交
 - **输入**：`email`
 - **行为**：必须是合法邮箱格式；非法格式拒绝
 - **输出/副作用**：表单错误
 - **错误**：邮箱格式错误
-- **历史实现观察**（2026-11-07 快照，未复核）：`RegisterForm.email` 只有 `DataRequired()`，没有 `Email()`（`security.md` SEC-05）
+- **本轮实现观察**（HEAD `171b40968f309c04ae3ad423696227c2767b0055`）：静态源码显示 `RegisterForm.email` 只有 `DataRequired()`、没有 `Email()`（`security.md` SEC-05）；未运行无效邮箱注册复现
 - **验收**：待补（新增无效邮箱注册测试）
-- **关联**：`security.md` SEC-05；上述风险为 2026-11-07 快照，现状待核实
+- **关联**：`security.md` SEC-05（本轮 HEAD 静态核对，未专项测试）
 
 ## 8. 密码重置
 
 ### REQ-RESET-001 找回密码不泄露邮箱是否存在
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无（未登录）
 - **输入**：邮箱
 - **行为**：无论邮箱是否存在都显示同一提示；仅对存在且 `email_verified=True` 的用户发送重置令牌
@@ -585,23 +501,17 @@ REQ-<领域>-<序号>
 
 ### REQ-RESET-002 重置令牌校验与密码更新
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户 `email_verified=True`
 - **输入**：重置令牌、新密码、重复密码、CSRF
 - **行为**：校验令牌；要求邮箱已验证；设置新密码哈希；成功后重定向登录
 - **输出/副作用**：密码更新；旧密码失效
 - **错误**：过期/无效/未验证/缺少密码分别拒绝
 - **不变量**：未验证邮箱不能重置；令牌不可跨密码/邮箱变化复用
-- **验收**：`testing.md` TC-SEC-010；`test_core.py`、`test_forgot_password`（过期边界待补）
+- **验收**：`testing.md` TC-SEC-010；实测入口为 `tests/integration/security/test_core.py::TestSecurityCore.test_verify_email`（插件级重置密码与二次使用抛 `InvalidTokenError`）与 `tests/integration/usercenter/test_user_view.py::TestUserView.test_forgot_password`（端到端表单提交）；HTTP 级令牌过期场景待补用例。
 - **关联**：`security.md` 6.5
 
 ### REQ-RESET-003 重置后旧密码/旧令牌/旧会话失效
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：重置成功
 - **输入**：旧密码/旧令牌/旧 session
 - **行为**：旧密码登录失败；旧令牌因密码哈希变化失效；旧 session 因密码指纹变化失效
@@ -615,9 +525,6 @@ REQ-<领域>-<序号>
 
 ### REQ-TOKEN-001 令牌载荷包含用户与凭据指纹
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：用户存在
 - **输入**：用户、动作类型
 - **行为**：生成载荷 `(user_id, email_hash, password_hash)`；改邮箱额外包含 `new_email`
@@ -629,23 +536,17 @@ REQ-<领域>-<序号>
 
 ### REQ-TOKEN-002 令牌有效期与配置
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无
 - **输入**：`RESET_PASSWORD_MAX_AGE` / `VERIFY_EMAIL_MAX_AGE` / `CHANGE_EMAIL_MAX_AGE`
 - **行为**：重置默认 1800 秒；验证/改邮箱默认 7 天；超过有效期返回 `expired`
 - **输出/副作用**：过期令牌被拒绝
 - **错误**：`ExpiredTokenError`
 - **不变量**：过期令牌不能执行动作
-- **验收**：`testing.md` TC-SEC-006（过期测试当前注释掉，待补）
+- **验收**：`testing.md` TC-SEC-006；`tests/integration/security/test_core.py::test_serializer` 中第 51-57 行关于 `max_age=2` 的过期断言代码被注释，未形成有效自动化验收（测试缺口，待补）。
 - **关联**：`security.md` 6.1
 
 ### REQ-TOKEN-003 无效/篡改/用户不存在令牌被拒绝
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无
 - **输入**：随机/篡改/错误 salt/未知用户令牌
 - **行为**：签名无效/载荷错误 → `invalid`；用户不存在 → `no_user`
@@ -657,9 +558,6 @@ REQ-<领域>-<序号>
 
 ### REQ-TOKEN-004 邮箱/密码变化使旧令牌失效
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：令牌已签发
 - **输入**：邮箱或密码发生变化后的旧令牌
 - **行为**：邮箱哈希/密码哈希不匹配 → 拒绝；重置/改邮箱令牌一次性；邮箱验证重复使用返回 `already_verified`
@@ -673,67 +571,52 @@ REQ-<领域>-<序号>
 
 ### REQ-CSRF-001 令牌按会话生成并使用派生密钥
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`CSRF_ENABLED=True`
 - **输入**：表单/请求
 - **行为**：session 中生成随机 token；用 `CSRF_SECRET_KEY` 或从 `SECRET_KEY` 派生的 CSRF 密钥签名；同一请求内 `g` 缓存
 - **输出/副作用**：表单包含 `csrf_token`
 - **错误**：无
 - **不变量**：CSRF 密钥与主密钥/其他用途密钥隔离
-- **验收**：`testing.md` TC-FORM-008/TC-FORM-011；`tests/unit/forms/form/test_form.py`
+- **验收**：`testing.md` TC-FORM-008/TC-FORM-011；实测入口为 `tests/unit/forms/form/test_form.py::test_csrf_token_uses_derived_key`，明确断言 CSRF 令牌由派生子密钥签名且旧主密钥解密抛 `BadSignature`。
 - **关联**：`security.md` 7.1；`spec.md` 4.4
 
 ### REQ-CSRF-002 缺失/无效/过期令牌被拒绝
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`CSRF_ENABLED=True`
 - **输入**：缺失/篡改/过期/不匹配 token
 - **行为**：分别返回缺失、无效、过期、不匹配错误；不执行写操作
 - **输出/副作用**：表单校验失败
 - **错误**：`ValidationError`
 - **不变量**：无有效 token 的写请求不能成功
-- **验收**：`testing.md` TC-FORM-010；`test_form.py`（过期/篡改 HTTP 级待补）
+- **验收**：`testing.md` TC-FORM-010；实测入口为 `tests/unit/forms/form/test_form.py::test_csrf_form`（断言无 token 时 `validate() is False`，带有效 token 时通过）；HTTP 路由级篡改/过期用例待补。
 - **关联**：`security.md` 7.1
 
 ### REQ-CSRF-003 默认开启，显式配置才关闭
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：无
 - **输入**：`CSRF_ENABLED`
 - **行为**：默认 `True`；只有显式 `False` 才禁用；禁用时不生成/不校验 token
 - **输出/副作用**：表单字段存在/不存在
 - **错误**：无
 - **不变量**：生产默认不能静默关闭
-- **验收**：`testing.md` TC-FORM-009；`test_nocsrf_form`
+- **验收**：`testing.md` TC-FORM-009；实测入口为 `tests/unit/forms/form/test_form.py::test_nocsrf_form`，断言 `CSRF_ENABLED=False` 时表单不包含 `csrf_token` 字段且校验通过。
 - **关联**：`security.md` 7.2
 
 ## 11. Admin / View
 
 ### REQ-ADMIN-001 列表分页
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：已授权访问 ModelView
 - **输入**：`page`、`page_size`
 - **行为**：`page` 从 0 开始；`page_size` 必须在白名单内，否则回退默认；返回当前页数据与总数
 - **输出/副作用**：列表模板渲染
 - **错误**：非法参数回退默认
 - **不变量**：分页不能越界导致 500；总数与页数一致
-- **验收**：`testing.md` TC-ADMIN-001～TC-ADMIN-004；`test_pagination.py`
+- **验收**：`testing.md` TC-ADMIN-002～TC-ADMIN-004；`test_pagination.py`
 - **关联**：`spec.md` 10.12
 
 ### REQ-ADMIN-002 搜索
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`column_searchable_list` 配置
 - **输入**：`search`
 - **行为**：在配置列/关联列搜索；`=` 精确、`^` 前缀、`$` 后缀、否则包含；多词 AND、列间 OR
@@ -745,9 +628,6 @@ REQ-<领域>-<序号>
 
 ### REQ-ADMIN-003 筛选
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`column_filters` 配置
 - **输入**：`flt*` 参数
 - **行为**：按列类型生成操作符；支持关联列；保留 active filters
@@ -759,9 +639,6 @@ REQ-<领域>-<序号>
 
 ### REQ-ADMIN-004 排序
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`column_sortable_list` / `column_default_sort`
 - **输入**：`sort`（列索引）、`desc`
 - **行为**：按指定列排序；支持多列；无参数时使用默认排序
@@ -773,24 +650,20 @@ REQ-<领域>-<序号>
 
 ### REQ-ADMIN-005 一对多搜索/筛选的计数正确
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：根模型与子模型是一对多关系；搜索/筛选涉及子表
 - **输入**：搜索/筛选请求
 - **行为**：分页总数必须等于**去重后的根记录数**，不能按 JOIN 行数计数
 - **输出/副作用**：`count` 与根记录数一致
 - **错误**：无
 - **不变量**：计数不随子记录数量放大
-- **历史实现观察**（2026-11-07 快照，未复核）：`build_count()` 应用 JOIN 未去重，计数偏大（C2）
+- **implementation**：`in-progress`（`build_count()` 应用 JOIN 未对根模型去重，一对多关联搜索/筛选时计数虚高）
+- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码证实未去重；问题关联 C2）
+- **本轮实现观察**：静态源码确认计数逻辑应用了连接表但未生成 `distinct`；需补一对多关联查询的计数回归测试。
 - **验收**：`testing.md` TC-ADMIN-031（待补）；关联 `spec.md` 第 10.16 节 C2
-- **关联**：`spec.md` 第 10.16 节 C2 与第 12.5.2 节；风险关联 `C2`（2026-11-07 快照，现状待核实）
+- **关联**：`spec.md` 第 10.16 节 C2 与第 12.5.2 节（HEAD 静态核对，未专项测试）
 
 ### REQ-ADMIN-006 CRUD 与最终数据库状态
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：已授权；`can_create/edit/delete` 允许
 - **输入**：创建/编辑/删除表单
 - **行为**：创建/更新/删除记录；成功 flash；失败回滚；删除仅 POST
@@ -802,9 +675,6 @@ REQ-<领域>-<序号>
 
 ### REQ-ADMIN-007 Inline 父子记录
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：父模型与子模型存在关系；`inline_models` 配置
 - **输入**：父表单 + Inline 子表单
 - **行为**：支持一对多/一对一/多对多；保存父记录后处理子记录新增/修改/删除；失败抛 `InlineModelError`
@@ -812,13 +682,10 @@ REQ-<领域>-<序号>
 - **错误**：关系找不到/子表单无效时拒绝
 - **不变量**：子记录必须属于该父记录
 - **验收**：`testing.md` TC-ADMIN-018～TC-ADMIN-021；`test_inline_forms.py`/`test_inline_views.py`
-- **关联**：`spec.md` 10.9；Inline+AJAX 缺陷 C1；上述风险为 2026-11-07 快照，现状待核实
+- **关联**：`spec.md` 10.9 / C1（本轮 HEAD 静态核对，未专项测试）
 
 ### REQ-ADMIN-008 AJAX 外键查询与内联更新
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`ajax_refs` 或 `column_editable_list` 配置
 - **输入**：`/ajax/lookup/`、`/ajax/update/` JSON 请求
 - **行为**：按 term 搜索关联记录并返回 `(id, text)`；内联更新校验 CSRF 后保存
@@ -826,13 +693,10 @@ REQ-<领域>-<序号>
 - **错误**：无权限/CSRF/校验失败拒绝
 - **不变量**：不能通过 AJAX 绕过授权/CSRF
 - **验收**：`testing.md` TC-ADMIN-022；`test_ajax.py`/`test_inline_ajax.py`
-- **关联**：`spec.md` 10.10；Inline+AJAX C1；上述风险为 2026-11-07 快照，现状待核实
+- **关联**：`spec.md` 10.10 / C1（本轮 HEAD 静态核对，未专项测试）
 
 ### REQ-ADMIN-009 导出
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`can_export=True`
 - **输入**：导出类型、当前搜索/筛选/排序
 - **行为**：按 `column_export_list` 导出；CSV 流式；tablib 格式；`export_max_rows` 限制；不支持的格式提示并重定向
@@ -844,37 +708,32 @@ REQ-<领域>-<序号>
 
 ### REQ-ADMIN-010 视图级权限开关
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：`can_create`/`can_edit`/`can_delete`
 - **输入**：创建/编辑/删除/内联更新请求
 - **行为**：开关为 `False` 时对应路由必须拒绝（重定向或 403），包括 `/ajax/update/`
 - **输出/副作用**：不执行写操作
 - **错误**：拒绝
-- **历史实现观察**（2026-11-07 快照，未复核）：`ajax_update` 只检查 `column_editable_list`，未检查 `can_edit`（V-01）
+- **implementation**：`in-progress`（`ajax_update` 仅校验 `column_editable_list`，未检查视图开关 `can_edit`）
+- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码证实存在绕过；问题关联 V-01 / SEC-19）
+- **本轮实现观察**：静态源码确认内联编辑路径缺少 `can_edit` 判断；需补当 `can_edit=False` 时 AJAX 更新返回 403 的测试。
 - **验收**：待补；关联 `spec.md` 第 10.16 节 V-01、`security.md` SEC-19
-- **关联**：`spec.md` 10.4.4；风险关联 `V-01`、`SEC-19`（2026-11-07 快照，现状待核实）
+- **关联**：`spec.md` 10.4.4；`V-01` / `SEC-19`（本轮 HEAD 静态核对，未专项测试）
 
 ### REQ-ADMIN-011 列表 URL 正确编码
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：搜索词/筛选值含空格、`&`、`#`、中文等
 - **输入**：分页/排序/搜索/筛选参数
 - **行为**：生成的列表 URL 必须正确编码并可回放
 - **输出/副作用**：URL 可访问且结果一致
 - **错误**：无
-- **历史实现观察**（2026-11-07 快照，未复核）：`get_list_url` 手写查询字符串，未 URL 编码（C6）；`hasattr(get_url)` 死分支（C5）
+- **implementation**：`in-progress`（`get_list_url` 手写查询字符串未 URL 编码；且 `hasattr(self, "get_url")` 死分支永远为假）
+- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码证实存在编码缺陷与死分支；问题关联 C5、C6）
+- **本轮实现观察**：静态源码确认特殊字符查询串未转义；需补含空格、`&`、中文的列表 URL 回放测试。
 - **验收**：`testing.md` TC-ADMIN-032（待补）；关联 `spec.md` 第 10.16 节 C5/C6
-- **关联**：`spec.md` 10.12；风险关联 `C5`、`C6`（2026-11-07 快照，现状待核实）
+- **关联**：`spec.md` 10.12；`C5` / `C6`（本轮 HEAD 静态核对，未专项测试）
 
 ### REQ-ADMIN-012 复合主键与字符串主键
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：模型有复合主键或字符串主键
 - **输入**：列表/编辑/删除/导出
 - **行为**：主键正确编码/解析；记录可定位与删除
@@ -886,16 +745,13 @@ REQ-<领域>-<序号>
 
 ### REQ-VIEW-001 自定义页面与模板
 
-- **lifecycle**：`unknown`
-- **implementation**：`unknown`
-- **verification**：`unverified`
 - **前置**：自定义 `View` 或 `list_template`
 - **输入**：`expose_url`、`allow_access`、`login_required`、`requires_active`
 - **行为**：路由可访问；`render`/`render_string` 渲染；模板可 `extends` 内置模板并传自定义参数
 - **输出/副作用**：HTML 响应
 - **错误**：未授权 403/登录重定向
 - **不变量**：模板覆盖不丢失列表/分页/筛选 UI
-- **验收**：`demo.md` TreeView；无专门单元测试（待补）
+- **验收**：`demo.md` TreeView；`tests/unit/admin/test_view.py::test_view` 仅覆盖 `View` 暴露的路由与端点元数据，未断言真实模板覆盖渲染（测试缺口，待补自动化用例）。
 - **关联**：`spec.md` 10.14
 
 ## 12. 追溯与状态导航

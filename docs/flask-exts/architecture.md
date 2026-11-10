@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-09 |
-> | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
+> | 最后更新 | 2026-11-10 |
+> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `requirements.md`（契约）、`spec.md`（实现、Admin、插件与数据库专题）、`security.md`（安全）、`testing.md`（验证）、`demo.md`（示例） |
 
@@ -43,7 +43,7 @@
 外部依赖：
 
 - Flask 3.x、WTForms 3.x、SQLAlchemy 2.x、Flask-Login、Flask-Babel、tablib、PyJWT、pyotp、cryptography。
-- 数据库：默认 SQLite；生产建议 PostgreSQL。
+- `examples/demo` 使用 SQLite；库中的 `SqlaDb` 按 `SQLALCHEMY_DATABASE_URI` 绑定数据源，不能把 demo 配置泛化为全库默认。
 - 邮件：`smtplib.SMTP_SSL`；未配置 `NOREPLY_EMAIL_SENDER` 时不真正发信。
 
 ## 2. 模块与依赖
@@ -73,7 +73,7 @@ proxies / signals / commands / constants  → 横切基础设施
 | --- | --- | --- |
 | `extension_core` | 扩展注册、依赖、两阶段生命周期、关闭 | 具体业务功能 |
 | `builtin_extensions` | 把内置能力装配成可组合扩展 | 复杂业务逻辑 |
-| `datastore/sqla` | `db` 单例、engine/session、Query 构造 | Admin/表单/安全策略 |
+| `datastore/sqla` | 默认导出的模块级 `db`、`SqlaDb` 实例、engine/session 与 Query 构造 | Admin/表单/安全策略 |
 | `admin` | View、ModelView、Handler、DataBackend、SqlaBackend | 用户存储/安全插件实现 |
 | `forms` | WTForms 扩展、字段、控件、校验器、CSRF | 数据库查询/路由 |
 | `security` | 密钥、哈希、加密、令牌、授权、TFA | 用户表 CRUD |
@@ -101,8 +101,8 @@ ExtensionManager()
 运行期
   └─ shutdown()
         ├─ 逆序调用每个扩展的 shutdown
-        ├─ 单扩展异常隔离，不阻止其他扩展
-        └─ 最终 db.dispose()
+        ├─ Registry 捕获 `ExtensionError` 并记录 warning；其他异常可能继续传播并中断后续清理
+        └─ 数据库扩展关闭时调用 `db.dispose()`
 ```
 
 关键约束：
@@ -110,8 +110,8 @@ ExtensionManager()
 - 扩展名称唯一、ASCII 合法。
 - 缺失依赖 → `ExtensionNotFoundError`；循环/自依赖 → `ExtensionDependencyError`。
 - `init_app` 与 `post_init` 各自幂等。
-- `post_init` 晚注册扩展不会自动回溯扫描（见 `spec.md` 第 10.16 节 C10）。
-- `db` 是单应用单例；重新绑定前必须 `dispose()`。
+- app 初始化后注册的新扩展会执行自身的 `init_app` / `post_init`；不会重跑已初始化扩展的 `post_init`。例如 Admin 不会自动重新扫描后来注册扩展提供的视图（见 `spec.md` 第 10.16 节 C10）。
+- 默认导出的模块级 `db` 同一时刻绑定一个 app；任一 `SqlaDb` 实例 `dispose()` 后可重新绑定，不能同时绑定多个 app。
 
 > 扩展编写者的实现要求、约束与作者检查清单，详见 [`spec.md` 第 11 章（插件与扩展机制）](./spec.md#11-插件与扩展机制)。
 
@@ -178,7 +178,7 @@ POST /user/verify_tfa/
 | 状态 | 存放位置 | 生命周期 | 说明 |
 | --- | --- | --- | --- |
 | 扩展实例/注册表 | `app.extensions["exts"]` | app 生命周期 | Manager/Registry |
-| `db` engine/session | 模块级 `db` 单例 | app 绑定，dispose 释放 | 一进程一 app |
+| `db` engine/session | 默认模块级 `db` 或显式 `SqlaDb` 实例 | app 绑定；`dispose()` 释放并允许重绑 | 单个实例不能同时绑定多个 app |
 | SQLAlchemy session | app context 内 `scoped_session` | 请求/app context | teardown 移除 |
 | 用户/角色/资料 | `userstore`（默认 SQLAlchemy） | 持久化 | `User`/`Role`/`UserProfile` |
 | 登录状态 | Flask signed session | 浏览器会话 | `_user_id` 含密码指纹 |
@@ -191,7 +191,7 @@ POST /user/verify_tfa/
 
 设计含义：
 
-- `db` 不适合“一进程多 app 并发”；需要多 app 时每个 app 使用独立 `SqlaDb` 实例。
+- 一个 `SqlaDb` 实例不支持并发绑定多个 app；多 app 并发需用独立实例。同一实例可在 `dispose()` 后顺序重用。
 - 令牌是无状态签名，不依赖 session；密码/邮箱变化通过载荷哈希使旧令牌失效。
 - TFA secret 必须可逆（计算 TOTP），所以用 AES-GCM 而不是哈希。
 - session 只存引用/标记，不存大对象。
@@ -217,7 +217,7 @@ POST /user/verify_tfa/
 | 两阶段初始化 | 先建服务，再互相装配 | 生命周期更复杂，必须幂等 |
 | `ModelView` 组合 `DataBackend` | 视图与数据源解耦 | 协议较大，新后端样板多 |
 | backend 用工厂创建 | backend 需要读取 `view` 配置 | 构造顺序更隐式 |
-| `db` 模块级单例 | 使用简单，符合 Flask 生态 | 一进程一 app；测试需 `dispose()` |
+| 默认模块级 `db` 与显式 `SqlaDb` 实例 | 使用简单，符合 Flask 生态 | 单实例同一时刻绑定一个 app；`dispose()` 后可复用 |
 | `LocalProxy` | 避免层层传递 app/扩展 | 隐式依赖上下文，静态分析困难 |
 | 信号解耦邮件/注册 | 注册与发信互不直接依赖 | 参数契约隐式，测试需清理全局 sender |
 | 按用途派生密钥 | 一处泄露不波及全部 | `SECRET_KEY` 轮换影响 TOTP/令牌/会话 |
@@ -241,17 +241,49 @@ ADR-<序号>: <决策标题>
 关联文档： spec.md / requirements.md / security.md
 ```
 
+### 7.2 核心架构决策记录
+
+#### ADR-001: 模块级默认 db 与显式 SqlaDb 实例生命周期
+- **状态**：accepted
+- **日期**：2026-11-10
+- **背景**：Flask 生态普遍习惯导入模块级 `db`（如 `from flask_exts.datastore.sqla import db`），但测试环境频繁重建 app 或多 app 场景易引发单例跨 app 污染与未绑定异常。
+- **决策**：导出默认模块级 `db` 实例满足 90% 单应用快速开发；每个 `SqlaDb` 实例同一时刻严格只绑定一个 app。多 app 并发时强制使用显式构造的 `SqlaDb()` 实例；同一实例顺序复用前必须显式调用 `dispose()`。
+- **理由**：既契合主流 Flask 开发直觉，又避免了静态全局变量无序复用导致的数据串扰和连接池泄露。
+- **备选方案**：纯动态 Factory 模式（要求每个视图层显式传参 `db`，对现有插件与 demo 侵入性过高）；允许多 app 共享连接池（线程安全与表元数据易混乱）。
+- **风险**：测试用例忘记在 teardown 中 `db.dispose()` 会导致后续测试报 `RuntimeError`；已通过 `tests/conftest.py` 固化夹具清理。
+- **关联文档**：[`spec.md` 第 12 章](./spec.md#12-数据库与持久化)、[`requirements.md` REQ-DATA-001](./requirements.md#req-data-001-单例绑定会话与释放)。
+
+#### ADR-002: 模型关系强制显式声明，禁用动态 backref
+- **状态**：accepted
+- **日期**：2026-11-10
+- **背景**：传统 SQLAlchemy 使用 `backref` 字符串隐式在目标模型注入反向属性，在 Admin 自动化表单生成、Inline 处理和类型检查（Mypy/IDE）时经常发生属性名不可见或隐式覆盖冲突。
+- **决策**：所有内置模型与示例模型全面采用 SQLAlchemy 2.0 风格的 `Mapped[...]` 显式类型标注；双向关联强制使用 `relationship(..., back_populates="...")` 对称声明，严禁在库级模型中使用动态 `backref`。
+- **理由**：双向属性显式可查，Admin 在内省外键与关系加载器时可以直接反射出对端真实字段名，降低运行时内省失败风险。
+- **备选方案**：继续沿用 SQLAlchemy 1.4 的字符串 `backref`（简单但隐式，自动化字段反射易出错）。
+- **风险**：模型代码声明行数增加约 15%~20%；已被 IDE 代码补全和类型安全性抵消。
+- **关联文档**：[`spec.md` 第 10.4 节](./spec.md#104-modelview)。
+
+#### ADR-003: 派生独立密钥隔离安全动作上下文
+- **状态**：accepted
+- **日期**：2026-11-10
+- **背景**：单条 `SECRET_KEY` 如果在 Session 签名、CSRF 校验、邮箱验证令牌和 TOTP 加密中直接混用，任一场景（如 CSRF 或客户端令牌）发生签名推测，攻击者可直接复用到敏感的高特权上下文。
+- **决策**：引入 `derive_key(secret_key, purpose)`，以版本化上下文 `flask-exts:key-derivation:v1:{purpose}` 为 salt 通过 HMAC-SHA256 派生不同用途的独立子密钥；JWT 强制使用独立配置 `JWT_SECRET_KEY`，不得回退到 `SECRET_KEY`。
+- **理由**：实现密码学意义上的目的隔离（Key Separation），单用途令牌即便在传输或日志中泄露，也无法被反向用于伪造会话或解密数据库中的 TOTP secret。
+- **备选方案**：所有模块共用 Flask 原生 `SECRET_KEY`（传统简单做法，安全防线单薄）。
+- **风险**：轮换 `SECRET_KEY` 时会同时失效所有派生子密钥（包括 TOTP secret 加密密钥），需建立对应的重绑定/重加密流程。
+- **关联文档**：[`security.md` 第 2.2 节](./security.md#22-密钥派生)。
+
 ## 8. 失败边界与约束
 
 | 场景 | 当前行为 | 风险/注意 |
 | --- | --- | --- |
 | 扩展依赖缺失/循环 | 启动期抛异常 | 不会带病启动 |
-| 单扩展 `shutdown` 异常 | 隔离并 warning | 其他扩展继续关闭 |
+| `shutdown` 抛 `ExtensionError` | 捕获并记录 warning | 其他异常类型未在此处理器中隔离 |
 | 数据库写入失败 | `rollback`，视图 flash 错误 | 不留下部分写入 |
 | Inline 保存失败 | `InlineModelError`，返回 4xx/错误 | Inline+AJAX 有 C1 缺陷 |
 | 令牌过期/无效 | `ExpiredTokenError`/`InvalidTokenError` | 不修改用户状态 |
 | 邮件发送失败 | `SmtpError` 被捕获并 warning | 注册可能“成功但没收到信” |
-| `db` 重复绑定 | `RuntimeError` | 必须先 `dispose()` |
+| `SqlaDb` 重复绑定 | 未 `dispose()` 时抛 `RuntimeError`；释放后可重新绑定 | 多 app 并发需使用独立实例 |
 | 列表计数一对多 | 当前可能偏大 | C2；见 `requirements.md` `REQ-ADMIN-005` |
 | TFA 无限重试 | 可在线暴力破解 | SEC-03；见 `security.md` |
 | 未激活 admin | 仍可访问 Admin | SEC-01；见 `security.md` |
@@ -259,7 +291,7 @@ ADR-<序号>: <决策标题>
 非功能约束：
 
 - Python 3.10+；不支持更早版本。
-- 单进程单 app 的 `db` 限制；多 app 需独立 `SqlaDb`。
+- 单个 `SqlaDb` 实例只能同时绑定一个 app；多 app 并发需独立实例，顺序复用前先 `dispose()`。
 - SQLite 适合开发/测试；生产注意外键、大小写、并发差异。
 - 列表页通过 `joinedload`/`selectinload` 降低 N+1；计数正确性仍需修复。
 - 安全边界、限流、审计、密钥轮换不在架构层自动保证，需部署/代码配合。

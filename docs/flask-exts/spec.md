@@ -4,8 +4,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-09 |
-> | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
+> | 最后更新 | 2026-11-10 |
+> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
 
 ## 目录
@@ -76,20 +76,7 @@ Flask-Exts 是一个面向 Flask 的扩展集合，用于把常见的 Web 基础
 
 ## 3.1 首版缺口与优先级（历史快照）
 
-> 本节是 v0.1 建立时的缺口清单；其中扩展作者契约、约束、依赖原则、范围外声明等已在本文第 11、12 章及 `architecture.md` 展开。本节保留为历史优先级记录，未逐项复核，阅读时以相关专题为准。
-
-如果只问“还缺什么”，优先级建议如下：
-
-1. 扩展作者的最小契约：定义扩展必须提供什么接口、如何注册、如何初始化、如何关闭。
-2. 约束与不变式：明确禁止做什么、必须满足什么语义约束，例如依赖不能循环、初始化前后状态必须稳定。
-3. 模块依赖方向/分层原则：明确哪些模块可依赖哪些模块，避免“可组合”变成隐藏耦合。
-4. 范围外声明：说明哪些能力不属于本项目，避免无边界扩张。
-5. 版本与兼容性策略：说明预期的发布节奏、兼容方式和升级约束。
-6. 关键决策的替代方案与理由：让设计取舍可追溯，而不是只留结论。
-7. 非功能需求的归属与优先级：如安全、性能、可观测性、可维护性应该落在哪一层文档中。
-8. 设计成功标准：定义什么时候可以认为本设计“够成熟”，便于验证和复盘。
-
-这些项不是“可选增强”，而是让扩展集合真正具备可审查、可维护、可扩展的最小工程性要求。
+本节记录 v0.1 初始规划，不代表当前缺口或优先级。现行缺口导航见 `README.md` 第 8 节；具体状态以对应权威文档中的证据为准。
 
 ## 4. 关键设计取舍与架构定位
 
@@ -148,7 +135,6 @@ flask_exts/
 
 ## 6. 当前状态判断
 
-- 版本：0.4.0
 - 文档版本：v0.1
 - 目标：作为工程基线和协作入口，而不是最终发布说明
 - 当前适用场景：设计评审、扩展开发、测试规划、风险梳理
@@ -188,9 +174,9 @@ flask_exts/
 
 ## 10. View 与 Admin 专题
 
-> 本章维护 View、ModelView、DataBackend、Inline、AJAX、导出、模板及相关已知问题。数据快照为 2026-11-07，未在当前环境复核；安全边界以 `security.md` 为准，测试策略以 `testing.md` 为准。
+> 本章维护 View、ModelView、DataBackend、Inline、AJAX、导出、模板及相关已知问题。本轮按 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核对了 C1/C2/C10/V-01 等指定观察；未运行相应缺陷复现测试。安全边界以 `security.md` 为准，测试策略以 `testing.md` 为准。
 
-### 专题目录
+### View 与 Admin 章节导航
 
 - [10.0 快速开始](#100-快速开始)
 - [10.1 View 体系总览](#101-view-体系总览)
@@ -362,13 +348,6 @@ class Admin:
 - `category` 用于菜单分组。
 - `render()` 会注入 `admin=self` 与 `get_url`。
 
-示例：
-
-```python
-admin.register_view(authorview)
-admin.register_view(tagview, is_menu=False)
-```
-
 ### 10.3 View 基类与路由
 
 #### 10.3.1 构造参数
@@ -519,7 +498,7 @@ def type_formatter(view, value, name):
 
 - `column_default_sort` 多列排序必须是 **list of tuples**；单个 tuple 会被当成一个排序规格。
 - `sort` 请求参数是**列表列索引**，不是列名。
-- 搜索词支持 `=` 精确、`^` 前缀、`$` 后缀，否则 `%contains%`；多个空格分隔词是 AND，列之间是 OR。
+- 搜索操作符及词/列组合语义见 `requirements.md` 的 `REQ-DATA-002` 与 `REQ-ADMIN-002`。
 
 ##### 表单
 
@@ -783,45 +762,19 @@ class FilterNameBrown(BaseSQLAFilter):
 
 #### 10.7.5 排序
 
-```python
-class PostView(SqlaModelView):
-    column_default_sort = ("date", True)
-    column_sortable_list = (
-        "id",
-        "title",
-        "date",
-        ("author", ("author.last_name", "author.first_name")),
-    )
-```
 
-- `column_default_sort` 多列用 list：
-  ```python
-  column_default_sort = [("last_name", False), ("first_name", False)]
-  ```
+- 多列 `column_default_sort` 的格式与类型约束见第 10.4.2 节。
 - `sort` 是列表列索引；`desc=1` 表示降序。
 - 多列排序通过 `(label, (path1, path2))` 表达。
 
 #### 10.7.6 搜索
 
-```python
-class PostView(SqlaModelView):
-    column_searchable_list = ("title", "author.first_name", "author.last_name")
-```
 
 - 支持点号路径。
-- 搜索词：
-  - `=foo` 精确
-  - `^foo` 前缀
-  - `foo$` 后缀
-  - `foo` 包含
-- 空格分隔多个词 = AND；列之间 = OR。
+- 搜索操作符及多词/多列语义见 `requirements.md` 的 `REQ-DATA-002` 与 `REQ-ADMIN-002`。
 
 #### 10.7.7 内联编辑
 
-```python
-class PostView(SqlaModelView):
-    column_editable_list = ("color",)
-```
 
 - 列表页通过 `/ajax/update/` 保存。
 - 需要字段可编辑、表单可生成、CSRF 正确。
@@ -869,7 +822,10 @@ class AuthorView(SqlaModelView):
 
 #### 10.8.3 关系字段与编辑页过滤
 
+历史实现中常见的直接访问方式：
+
 ```python
+# 历史写法（反模式说明：View 层直接穿透访问 backend.session）
 def edit_form(self, *args, **kwargs):
     return self._filtered_posts(super().edit_form(*args, **kwargs))
 
@@ -885,10 +841,11 @@ def _filtered_posts(self, form):
     return form
 ```
 
-- 关系字段默认加载全部候选；可通过 `query_factory` 限制。
-- 注意在 `edit_form` 中做，而不是 `create_form`。
+说明与规范指引：
 
-> 该历史示例在 View 中直接访问 backend 的 session，与第 12.4 节的分层约束存在张力；具体边界待核实。
+- 关系字段默认加载全部候选；可通过 `query_factory` 限制。
+- 注意在 `edit_form` 中设置，而不是 `create_form`。
+- **分层规范说明**：上述历史写法直接在 View 中操作 `self._backend.session` 并手写 `select`，违背了第 12.4 节“查询过滤收敛在数据层”的分层原则。推荐写法应由模型或 Backend 封装作用域查询方法（如 `Post.get_author_posts(author_id)` 或 `backend.get_scoped_query(...)`），View 层只负责将封装好的查询绑定到表单的 `query_factory`。
 
 #### 10.8.4 CSRF
 
@@ -1165,30 +1122,16 @@ class TreeView(SqlaModelView):
 
 #### 10.15.1 新增一个模型视图
 
-1. 定义模型。
-2. 定义 `SqlaModelView` 子类。
-3. `admin.register_view(view_instance)`。
-4. 访问 `/admin/<endpoint>/`。
+新增模型视图的最小注册示例见第 10.0.1 节；本表只导航到需要查阅的专题配置。
 
-#### 10.15.2 自定义格式化器
-
-见第 10.7.2 节。
-
-#### 10.15.3 自定义过滤器
-
-见第 10.7.4 节。
-
-#### 10.15.4 Inline 子表单
-
-见第 10.9.1 节。
-
-#### 10.15.5 AJAX 外键
-
-见第 10.10.1 节。
-
-#### 10.15.6 自定义列表模板
-
-见第 10.14.2 节。
+| Recipe | 详见 |
+| --- | --- |
+| 自定义格式化器 | 第 10.7.2 节 |
+| 自定义过滤器 | 第 10.7.4 节 |
+| Inline 子表单 | 第 10.9.1 节 |
+| AJAX 外键 | 第 10.10.1 节 |
+| 自定义列表模板 | 第 10.14.2 节 |
+| 自定义页面 | 第 10.14.3 节 |
 
 #### 10.15.7 自定义后端
 
@@ -1207,10 +1150,6 @@ admin.register_view(jsonview)
 
 `JsonBackend` 实现第 10.5 节的协议；不需要 SQLAlchemy。
 
-#### 10.15.8 自定义页面
-
-见第 10.14.3 节。
-
 ### 10.16 已知问题与回归
 
 | ID | 严重度 | 位置 | 问题 | 建议 |
@@ -1220,13 +1159,12 @@ admin.register_view(jsonview)
 | C5 | 低 | `admin/model/handlers/pagination.py::get_list_url` | `hasattr(self, "get_url")` 永远为假 | 改用 `url_for` |
 | C6 | 低 | 同上 | 手写查询字符串未 URL 编码 | `urlencode` |
 | C7 | 低 | `datastore/sqla/query_builders/` | 运行时未使用，和 `Query` 形成两套抽象 | 删除或合并 |
-| C10 | 低 | `AdminExtension.post_init` | 晚注册 `AdminViewMixin` 不会被重新扫描 | 文档化/提供刷新方法 |
+| C10 | 低 | 扩展管理器的晚注册路径 / `AdminExtension.post_init` | 新扩展会执行自身初始化，但不会重跑 Admin 的视图扫描；晚注册扩展提供的 `AdminViewMixin` 不会自动被收集 | 文档化或提供显式刷新机制 |
 | V-01 | 中 | `admin/model/view.py::ajax_update` | 只检查 `column_editable_list`，未检查 `can_edit` | 内联编辑可能绕过视图级编辑开关；补 `can_edit` 检查与测试 |
 | V-02 | 低 | `admin/model/handlers/rowactions.py` / `rowsaction.py` | `RowActionHandler`（单行）与 `RowsActionHandler`（批量）命名只差一个 `s`，文件名也近似 | 重命名为 `RowActionHandler` / `BulkActionHandler`，文件 `row_actions.py` / `bulk_actions.py` |
 
 其他注意：
 
-- `column_default_sort` 多列必须是 list，不是 tuple。
 - 自定义 `apply()` 必须 `query.add_filter(...)`；返回值会被忽略。
 - `export_types` 含 `xls` 时需要可选依赖。
 - `column_formatters` 用 `Markup` 时注意 XSS。
@@ -1252,7 +1190,7 @@ def create_ajax_loader(self, name, options):
     return self._backend.create_ajax_loader(name, options)
 ```
 
-**复现：** 给 `inline_models` 的子模型配置 `ajax_refs`，访问创建/编辑页。
+**静态证据 / 待验证：** 给 `inline_models` 的子模型配置 `ajax_refs`，访问创建/编辑页可触发该调用路径；源码调用参数与方法签名不匹配，预期参数绑定失败。本轮未运行该复现。
 
 **建议：** 统一签名。要么让 `create_ajax_loader` 接受 `(model, session, name, field_name, options)`，要么在 Inline 里先构造 `AjaxSqlaModelLoader` 并直接赋值。修复后补测试 `tests/integration/admin/sqla/test_inline_ajax.py`。
 
@@ -1305,7 +1243,7 @@ count = session.scalar(query.build_count())
 
 ##### C10：晚注册扩展
 
-`AdminExtension.post_init` 只在初始化阶段扫描一次。`register_extension` 的文档已说明这一点。
+应用初始化后注册扩展时，管理器会执行新扩展自身的 `init_app` / `post_init`，但不会重新调用已初始化的 `AdminExtension.post_init`。因此，晚注册扩展提供的 `AdminViewMixin` 不会自动进入 Admin 的视图注册表。该结论来自 HEAD 源码静态核对，未运行针对性复现测试。
 
 **建议：**
 
@@ -1340,7 +1278,7 @@ rowactions.py      → row_actions.py（可选）
 
 ### 10.17 测试与追溯入口
 
-View/Admin 用例、测试缺口与状态以 [`testing.md` 第 7.3 节](./testing.md#73-admin)为准；历史测试文件快照见 [`testing.md` 第 1.2.1 节](./testing.md#121-admin-测试文件快照)，安全相关缺口见 [`testing.md` 第 7.5 节](./testing.md#75-security)。具体 `REQ → TC → 测试入口` 在 [`requirements.md` 对应契约](./requirements.md#11-admin--view)的“验收”字段维护。
+View/Admin 用例、测试缺口与状态以 [`testing.md` 第 7.3 节](./testing.md#73-admin)为准；Admin 测试文件清单见 [`testing.md` 第 1.2.1 节](./testing.md#121-admin-测试文件清单)，安全相关缺口见 [`testing.md` 第 7.5 节](./testing.md#75-security)。具体 `REQ → TC → 测试入口` 在 [`requirements.md` 对应契约](./requirements.md#11-admin--view)的“验收”字段维护。
 
 问题复现与技术细节仍见第 10.16 节；测试文件或用例引用不代表相关断言存在或执行通过，当前状态须以实际证据核实。
 
@@ -1348,21 +1286,7 @@ View/Admin 用例、测试缺口与状态以 [`testing.md` 第 7.3 节](./testin
 
 > 本节是速查表，只列常用入口；语义见第 10.7～10.15 节，不在本节重复解释。
 
-```python
-from flask_exts.admin import Admin, View, expose_url, login_required, requires_active
-from flask_exts.admin.sqla.view import SqlaModelView
-
-
-class MyView(SqlaModelView):
-    column_list = ("id", "name")
-    column_searchable_list = ("name",)
-    column_sortable_list = ("name",)
-    form_columns = ("name",)
-
-
-admin = app.extensions["exts"].get_extension("admin").get_admin()
-admin.register_view(MyView(MyModel, name="My", endpoint="my", url="/my"))
-```
+最小视图创建与注册示例见第 10.0.1 节；本节只保留属性名速查。
 
 常用属性：
 
@@ -1387,9 +1311,9 @@ list_template / create_template / edit_template / details_template
 
 ## 11. 插件与扩展机制
 
-> 本章规范扩展的注册、依赖、生命周期、作者契约和接口边界，不重复业务需求和安全策略。适用范围为扩展集合、扩展注册器、插件约定和内置扩展装配；数据快照为 2026-11-07（仓库版本 `0.4.0`；未复核）。
+> 本章规范扩展的注册、依赖、生命周期、作者契约和接口边界，不重复业务需求和安全策略。适用范围为扩展集合、扩展注册器、插件约定和内置扩展装配；本轮按 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核对了生命周期与晚注册路径，未运行对应专项测试。
 
-### 专题目录
+### 插件与扩展机制章节导航
 
 - [11.1 适用范围](#111-适用范围)
 - [11.2 核心原则](#112-核心原则)
@@ -1397,9 +1321,10 @@ list_template / create_template / edit_template / details_template
 - [11.4 生命周期规范](#114-生命周期规范)
 - [11.5 依赖与分层原则](#115-依赖与分层原则)
 - [11.6 约束与不变式](#116-约束与不变式)
-- [11.7 扩展作者检查清单](#117-扩展作者检查清单)
-- [11.8 设计风险](#118-设计风险)
-- [11.9 说明](#119-说明)
+- [11.7 最小扩展示范（Tutorial）](#117-最小扩展示范tutorial)
+- [11.8 扩展作者检查清单](#118-扩展作者检查清单)
+- [11.9 设计风险](#119-设计风险)
+- [11.10 说明](#1110-说明)
 
 ### 11.1 适用范围
 
@@ -1456,7 +1381,13 @@ list_template / create_template / edit_template / details_template
 #### 11.4.3 关闭阶段
 
 - `shutdown()` 应按逆序释放资源。
-- 单个扩展失败不能直接导致整个系统关闭流失控。
+- 单个扩展失败不应阻止其他资源清理。当前源码的 Registry 关闭路径只捕获 `ExtensionError`；其他异常可继续传播。该契约冲突已登记为 C11，见下文。
+
+##### C11：扩展关闭异常未完全隔离
+
+源码 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all` 只捕获 `ExtensionError`。其他普通异常会中断逆序关闭循环；现有测试 `tests/unit/extension_core/test_registry.py::test_shutdown_exception` 明确断言 `ValueError` 向外传播。这与 `REQ-EXT-004` 的单扩展异常隔离契约冲突。完整套件本轮结果虽为 229 passed、1 skipped，但该现有测试验证的是相反行为，不能据此标记契约通过。
+
+**建议：** 按契约逐扩展隔离普通异常、记录 warning 并继续关闭；补充测试确认后续扩展仍关闭且状态清理完成。不要捕获 `BaseException`。本轮仅更新文档，未修改源码或测试。
 
 ### 11.5 依赖与分层原则
 
@@ -1482,7 +1413,55 @@ list_template / create_template / edit_template / details_template
 - 扩展名称必须唯一且合法。
 - 运行时协作必须可追踪，不应依赖“碰巧可用”的全局对象。
 
-### 11.7 扩展作者检查清单
+### 11.7 最小扩展示范（Tutorial）
+
+编写一个符合规范的自定义扩展只需继承 `Extension` 并按需覆盖阶段钩子：
+
+```python
+from flask import Flask
+from flask_exts.extension_core.base import Extension
+
+
+class AuditLogExtension(Extension):
+    """一个示例审计日志扩展，演示声明依赖、初始化与资源关闭。"""
+
+    @property
+    def name(self) -> str:
+        return "audit_log"  # 唯一且符合 ASCII 规范的扩展名称
+
+    @property
+    def dependencies(self) -> tuple[str, ...]:
+        return ("database",)  # 声明依赖内置的 database 扩展，保证 database 先初始化
+
+    def init_app(self, app: Flask) -> None:
+        """第一阶段：仅初始化自身资源并绑定到 app。"""
+        self._log_file = open("audit.log", "a", encoding="utf-8")
+        app.extensions["audit_log"] = self
+
+    def post_init(self, app: Flask) -> None:
+        """第二阶段：跨扩展连接（此时依赖的 database 必然已就绪）。"""
+        # 可以安全获取 app.extensions["exts"] 或其他依赖扩展状态
+        self._log_file.write("AuditLogExtension attached.\n")
+        self._log_file.flush()
+
+    def shutdown(self) -> None:
+        """关闭阶段：逆序释放自身持有的资源（如文件句柄、外部连接）。"""
+        if hasattr(self, "_log_file") and not self._log_file.closed:
+            self._log_file.close()
+```
+
+注册与使用方式：
+
+```python
+from flask_exts.extension_core.manager import ExtensionManager
+
+app = Flask(__name__)
+manager = ExtensionManager()
+manager.register_extension(AuditLogExtension)  # 注册扩展类
+manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
+```
+
+### 11.8 扩展作者检查清单
 
 扩展作者在设计新插件时，至少应回答：
 
@@ -1493,7 +1472,7 @@ list_template / create_template / edit_template / details_template
 - 我是否在 shutdown 中释放资源？
 - 我的接口是否能在测试中单独验证？
 
-### 11.8 设计风险
+### 11.9 设计风险
 
 以下情况应被视为插件机制的高风险：
 
@@ -1502,15 +1481,15 @@ list_template / create_template / edit_template / details_template
 - 扩展在 `post_init` 里循环访问其他扩展状态
 - 组件没有幂等性或清理路径
 
-### 11.9 说明
+### 11.10 说明
 
 本专题不替代行为契约，也不替代数据库、视图和安全领域说明。插件机制属于核心架构能力，故它比普通实现细节更需要被单独说明；其可验证行为会落到 `requirements.md`，而具体实现和设计动机则见 `architecture.md` 和本文其他章节。
 
 ## 12. 数据库与持久化
 
-> 本章规范数据库边界、生命周期、约束和责任分工，不重复业务需求或安全细节。适用范围为 SQLAlchemy 数据层、数据访问扩展和持久化约束；数据快照为 2026-11-07（仓库版本 `0.4.0`；未复核）。
+> 本章规范数据库边界、生命周期、约束和责任分工，不重复业务需求或安全细节。适用范围为 SQLAlchemy 数据层、数据访问扩展和持久化约束；本轮已按 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核对数据库绑定、释放与配置边界，未运行全部生命周期场景测试。
 
-### 专题目录
+### 数据库与持久化章节导航
 
 - [12.1 适用范围](#121-适用范围)
 - [12.2 核心原则](#122-核心原则)
@@ -1518,8 +1497,9 @@ list_template / create_template / edit_template / details_template
 - [12.4 约束与不变式](#124-约束与不变式)
 - [12.5 查询规范](#125-查询规范)
 - [12.6 兼容性与扩展性](#126-兼容性与扩展性)
-- [12.7 设计风险](#127-设计风险)
-- [12.8 说明](#128-说明)
+- [12.7 生产关系数据库接入参考（PostgreSQL）](#127-生产关系数据库接入参考postgresql)
+- [12.8 设计风险](#128-设计风险)
+- [12.9 说明](#129-说明)
 
 ### 12.1 适用范围
 
@@ -1529,7 +1509,7 @@ list_template / create_template / edit_template / details_template
 - `db` 单例的绑定与释放
 - 查询构造、筛选、排序、分页和比对规则
 - 事务/上下文边界
-- 默认数据库选型与可扩展性约束
+- 数据库 URI 配置、后端选择与可扩展性约束
 
 不覆盖：
 
@@ -1540,17 +1520,17 @@ list_template / create_template / edit_template / details_template
 ### 12.2 核心原则
 
 1. 数据层必须与视图层、认证层、业务层分离。
-2. 一个 `db` 实例应绑定到一个 Flask app；跨 app 共享不做默认假设。
+2. 一个 `SqlaDb` 实例同一时刻只能绑定一个 Flask app；`dispose()` 后可重新绑定。多个 app 并发使用时应使用独立实例。
 3. 数据访问必须在 app context 内进行，使用统一的 session lifecycle。
 4. 查询构造应遵守单一入口和可审查职责，不把数据库细节散落到 UI 或扩展逻辑中。
-5. 默认数据库是 SQLite；生产部署应以 PostgreSQL 或等价关系数据库为主。
+5. 后端由 `SQLALCHEMY_DATABASE_URI` 配置；`examples/demo` 使用 SQLite，不把 demo 配置泛化为库默认。生产环境应按部署要求明确选择数据库。
 
 ### 12.3 生命周期规范
 
 #### 12.3.1 初始化
 
 - `db.init_app(app)` 用于绑定数据库到 Flask app。
-- 每个 app 只允许一个绑定。
+- 每个 `SqlaDb` 实例同一时刻只绑定一个 app；释放后允许重新绑定。
 - 数据层的初始化必须在扩展注册与依赖排序之后发生。
 
 #### 12.3.2 会话管理
@@ -1562,17 +1542,17 @@ list_template / create_template / edit_template / details_template
 #### 12.3.3 关闭与重绑定
 
 - `dispose()` 或等价释放动作必须在重绑定前调用。
-- 关闭失败应被隔离，不应影响其他扩展的清理。
+- 关闭失败应被隔离，不应影响其他扩展的清理。当前 Registry 只捕获 `ExtensionError`；其他普通异常会继续传播并可能中断后续清理，见 C11 与 `REQ-EXT-004`。
 
 ### 12.4 约束与不变式
 
-- 一个进程中的数据库实例不能默认同时表示多个 app。
+- 同一个 `SqlaDb` 实例不能同时绑定多个 app；顺序复用前先 `dispose()`，并发 app 使用独立实例。
 - session 不能被长期持有在全局变量中。
 - 查询和过滤必须在数据层决定，不允许 View 层直接手写数据库访问逻辑。
 - 相关字段的排序、过滤和分页必须由统一的查询层处理。
 - 直接使用裸 SQL 只能作为受控例外，不应成为主路径。
 
-> 待澄清：第 10.8.3 节的历史示例在 View 方法中通过 backend 的 session 构造和执行查询，与本节分层约束存在张力。示例和规则均保留；具体边界及实现是否符合要求须结合源码与契约核实。
+> **分层约束与反模式说明**：第 10.8.3 节展示了早期实现中 View 穿透访问 `self._backend.session` 的历史写法；按本节规范，这是应被收敛的反模式。View 层应调用 Model 或 DataBackend 导出的命名作用域/查询工厂，而不应直接持有并执行裸 session 语句。
 
 ### 12.5 查询规范
 
@@ -1588,7 +1568,7 @@ list_template / create_template / edit_template / details_template
 - 分页应使用统一的 page/page_size 规则。
 - 计数必须和查询结果保持语义一致，避免重复计数或 JOIN 误差。
 
-> 历史快照中一对多 JOIN 计数存在 C2 问题记录，见第 10.16 节；该记录未在当前环境复核，不能仅凭本节规范推断现状或修复状态。
+> 本轮对照 HEAD 静态核对 C2：`build_count()` 将查询应用于 JOIN 后直接计数，存在一对多重复计数风险，见第 10.16 节；未运行对应复现测试，不能据此声称验收失败或修复状态已验证。
 
 ### 12.6 兼容性与扩展性
 
@@ -1596,7 +1576,36 @@ list_template / create_template / edit_template / details_template
 - 未来如果增加多个后端，应该只替换数据访问实现，而不改动上层 View/Controller 逻辑。
 - 数据模型与持久化层必须明确区分“接口”和“实现”。
 
-### 12.7 设计风险
+### 12.7 生产关系数据库接入参考（PostgreSQL）
+
+`examples/demo` 采用单机 SQLite 作为演示，生产环境推荐切换为 PostgreSQL。生产配置应显式通过 `SQLALCHEMY_ENGINE_OPTIONS` 调优连接池与回收周期，防止连接泄露或静默超时断开：
+
+```python
+# config_prod.py 示例
+import os
+
+# 1. 生产连接串：使用专用业务账号与强密码，严禁使用超级管理员 postgres
+SQLALCHEMY_DATABASE_URI = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+psycopg2://app_user:strong_password@10.0.0.10:5432/app_db?sslmode=require",
+)
+
+# 2. 连接池与会话选项（防连接断开、控制最大并发连接数）
+SQLALCHEMY_ENGINE_OPTIONS = {
+    "pool_size": 10,  # 基础连接池大小
+    "max_overflow": 20,  # 突发流量允许超出的最大临时连接数
+    "pool_recycle": 1800,  # 30 分钟主动回收连接，防止防火墙或 PG 静默切断死连接
+    "pool_pre_ping": True,  # 借出连接前执行 SELECT 1 探测有效性
+    "pool_timeout": 30,  # 获取连接超时时限（秒）
+}
+```
+
+初始化与生产要求：
+
+- **表结构变更**：禁止在生产环境直接运行 `db.reset_all()` 或依赖删表重建；模型字段变更应在开发期完成评审后，通过受控的 SQL DDL 迁移脚本在低峰期灰度执行。
+- **编码与时区**：PostgreSQL 实例必须以 `UTF8` 编码初始化，并保持 `TIMEZONE='UTC'`。
+
+### 12.8 设计风险
 
 以下问题属于本规范重点关注：
 
@@ -1605,6 +1614,6 @@ list_template / create_template / edit_template / details_template
 - 过滤条件和分页条件字段不一致
 - 依赖于隐式全局状态而不是显式 context
 
-### 12.8 说明
+### 12.9 说明
 
 本专题是数据库层的核心规范，其重点是“边界、生命周期、查询合规和可扩展性”。详细行为契约仍放在 `requirements.md`；具体实现细节和为什么这样做见 `architecture.md` 和本文其他章节。

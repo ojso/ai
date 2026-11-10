@@ -6,16 +6,19 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-09 |
-> | 数据快照 | 2026-11-07（仓库版本 `0.4.0`；未复核） |
+> | 最后更新 | 2026-11-10 |
+> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`demo.md`（示例）；View/Admin 见 `spec.md` 第 10 章 |
 >
-> **重要说明**：本文描述的是**当前实现的安全行为与边界**，不是“已通过安全认证”的证明。标记为“风险/待决策”的内容需要结合部署环境评估；涉及代码修改的修复必须先评审、补测试，再实施。
+> **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。
 
 ## 目录
 
 - [0. 快速安全基线](#0-快速安全基线)
+  - [0.1 五条必须做到](#01-五条必须做到)
+  - [0.2 五条不要做](#02-五条不要做)
+  - [0.3 代码未修复时的临时配置阻断（Workarounds）](#03-代码未修复时的临时配置阻断workarounds)
 - [1. 范围与威胁模型](#1-范围与威胁模型)
 - [2. 安全架构与密钥](#2-安全架构与密钥)
 - [3. 认证与会话](#3-认证与会话)
@@ -26,6 +29,11 @@
 - [8. 双因素认证（TFA）](#8-双因素认证tfa)
 - [9. JWT / API 认证](#9-jwt--api-认证)
 - [10. 配置安全清单](#10-配置安全清单)
+  - [10.1 必需配置](#101-必需配置)
+  - [10.2 推荐配置](#102-推荐配置)
+  - [10.3 禁止配置](#103-禁止配置)
+  - [10.4 密钥轮换决策表](#104-密钥轮换决策表)
+  - [10.5 生产反向代理配置参考（Nginx）](#105-生产反向代理配置参考nginx)
 - [11. 已知风险与待决策](#11-已知风险与待决策)
 - [12. 测试覆盖与缺口](#12-测试覆盖与缺口)
 - [13. 安全运营与响应](#13-安全运营与响应)
@@ -48,6 +56,18 @@
 - 不要在公网环境使用 demo 的 `admin/admin`。
 - 不要在没有 TFA 的情况下把 admin 权限授予普通业务账号。
 - 不要直接轮换 `SECRET_KEY` 而不评估 TOTP secret 失效（见 10.4）。
+
+### 0.3 代码未修复时的临时配置阻断（Workarounds）
+
+在核心安全风险未完成代码修复与发版前，生产部署必须在运维与配置层采取以下替代控制措施：
+
+| 风险项 | 缺陷根因 | 临时阻断要求（运维/管理） |
+| --- | --- | --- |
+| **SEC-01**（禁用 admin 仍有效） | `SimpleAuthorizer` 优先放行 admin 角色，绕过了 `is_active` 校验 | **禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时在数据库或管理后台移除其 `admin` 角色，或直接删除账号。 |
+| **SEC-02**（JWT 绕过 TFA） | `load_user_from_request` 仅检查 `is_active`，未验证 TFA 完成标记 | 对开启双因素认证的高权限账号，**切勿为其发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。 |
+| **SEC-03**（认证端点无限流） | 登录、注册、TFA 校验、找回密码端点无内置防爆破与锁定机制 | **反向代理硬性限流**：Nginx / Envoy / WAF 必须对 `/user/login/`、`/user/verify_tfa/`、`/user/reset_password/` 开启基于来源 IP 或用户名的频次限制（如单 IP 每分钟 ≤5 次）。 |
+| **SEC-18**（未配置 sender 泄露令牌） | 发送器缺失时完整载荷被打入 warning 日志，包含敏感链接 | 生产环境务必在启动阶段显式提供有效的 `NOREPLY_EMAIL_SENDER`，防止退化到该记录分支；生产日志输出需配置过滤。 |
+| **SEC-19 / V-01**（内联编辑绕过只读开关） | `ajax_update` 仅检查可编辑列，未检查 `can_edit` | 若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。 |
 
 ## 1. 范围与威胁模型
 
@@ -166,7 +186,7 @@ def derive_key(secret_key, purpose):
 
 | 用途 | 算法/结果 | 使用位置 |
 | --- | --- | --- |
-| `hasher` | HMAC-SHA256 派生密钥 + BLAKE2b（16 字节摘要） | 密码/邮箱/密码指纹、恢复码 |
+| `hasher` | HMAC-SHA256 派生密钥 + BLAKE2b（16 字节摘要） | 邮箱、已存储密码哈希的指纹、恢复码；用户密码存储算法见第 5.1 节 |
 | `url-token` | HMAC-SHA256 派生密钥 + itsdangerous | 邮箱验证、改邮箱、重置密码令牌 |
 | `encryptor` | HMAC-SHA256 派生密钥（32 字节）+ AES-256-GCM | TOTP secret |
 | `csrf` | 派生密钥或 `CSRF_SECRET_KEY` | CSRF token 签名 |
@@ -410,19 +430,19 @@ class UserMixin(FlaskLoginUserMixin):
 | 改邮箱 | 当前密码 3–50 |
 | 登录 | 仅 `DataRequired`，无长度限制 |
 
-**缺口（SEC-06，中）**：
+**缺口（SEC-06，中；基于 2026-11-07 快照，当前未复核）**：
 
-- 没有复杂度要求（大小写/数字/符号）。
-- 没有常见弱密码/泄露密码检查。
-- 没有密码历史/重复使用限制。
+- 快照未见常见或泄露密码阻断。仅当密码验证器适用 [README.md 第 5 节登记的 NIST SP 800-63B-4 §3.1.1](./README.md#5-单一事实源) 时，该规范才要求在设定或修改密码时阻断完整密码命中清单。
+- 未要求大小写、数字、符号组合本身不应自动判为缺陷；对上述 NIST 适用范围，规范不允许额外的字符组合规则。其他项目按自身适用的政策评估。
+- 快照未见密码历史/复用限制；是否需要由项目适用政策决定，不作为通用默认要求。
 - 直接调用 `current_userstore.create_user(password=...)` 可绕过表单长度限制。
-- 注册表单的邮箱字段只用了 `DataRequired()`，**没有 `Email()` 校验**（SEC-05，中）。
+- 邮箱格式校验问题单独见 SEC-05。
 
 建议：
 
-- 增加密码策略与泄露密码检查（可接 Have I Been Pwned k-anonymity API，需评估网络依赖）。
-- 注册表单补 `Email()` 与长度限制。
-- 对管理员强制更长密码 + TFA。
+- 先确认适用标准和部署范围；按适用要求评估密码长度、完整密码阻断及认证尝试限流，不把字符组合规则当作默认控制。
+- 采用 Have I Been Pwned 等外部检查前，评估网络依赖与隐私影响；不要默认引入第三方服务。
+- 管理员优先启用 TFA；额外密码长度要求应记录风险依据。
 
 ### 5.3 密码变更与会话失效
 
@@ -533,7 +553,7 @@ return self.app.config.get(f"{serializer_name.upper()}_MAX_AGE", default_max_age
 
 `SmtpSSL` 使用 `smtplib.SMTP_SSL`：
 
-- **当前未传入 SSL context**：`smtplib.SMTP_SSL` 默认使用 `ssl._create_stdlib_context()`，`verify_mode=CERT_NONE` 且不校验主机名，存在 SMTP MITM/凭据泄露风险（SEC-17）。
+- **源码未显式传入 SSL context**：`SmtpSSL` 构造 `smtplib.SMTP_SSL` 时没有提供 context；不同受支持 Python 版本的默认证书/主机名校验行为未在本轮核验。显式使用 `ssl.create_default_context()` 并增加验证测试前，应按 SEC-17 保持风险状态。
 - 使用 `NOREPLY_EMAIL_SENDER` 中的 `host/port/user/password`。
 - 不要在代码/仓库中硬编码 SMTP 凭据。
 - 当前 `send_email` 找不到 sender 时会把完整 `data` 写入 warning 日志，可能包含验证/重置链接和令牌（SEC-18）；应只记录 `type`/收件人并脱敏。
@@ -803,9 +823,53 @@ if "Authorization" in request.headers:
 | 怀疑 JWT 密钥 | 轮换 `JWT_SECRET_KEY` | 所有 JWT 失效 | 通知 API 客户端重新登录 |
 | 常规密钥轮换 | 按周期轮换 | 同上 | 建立迁移/通知流程 |
 
+### 10.5 生产反向代理配置参考（Nginx）
+
+由于框架内部未内置防爆破计数器（SEC-03），在公网部署时，生产环境的反向代理**必须承载 TLS 终止、安全请求头注入与认证端点限流**。以下为推荐配置片段：
+
+```nginx
+# 1. 定义认证端点专用的 IP 限流区域（单 IP 每秒最多 1 次，防止字典攻击）
+limit_req_zone $binary_remote_addr zone=auth_limit:10m rate=1r/s;
+
+server {
+    listen 443 ssl http2;
+    server_name example.com;
+
+    ssl_certificate     /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    # 2. 安全响应头基线
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    # 3. 对敏感认证端点强制启用突发与限流规则（SEC-03 防护）
+    location ~ ^/user/(login|verify_tfa|reset_password)/ {
+        limit_req zone=auth_limit burst=5 nodelay;
+        proxy_pass http://127.0.0.1:8000;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;  # 保证 Flask 识别 HTTPS，使 Secure Cookie 生效
+    }
+
+    # 4. 常规业务转发
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}
+```
+
 ## 11. 已知风险与待决策
 
-> 以下为**当前源码观察**，不是历史审查结论。等级按“公网部署 + 默认配置”估计；实际风险取决于部署方式。
+> 本轮已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核实 SEC-01/02/05/17/18/19 的代码观察；其余风险按各条现有证据边界标记。等级基于“公网 + 默认配置”假设，实际影响取决于部署；这不是完整安全审计或渗透测试。
 
 | ID | 等级 | 位置 | 现状 | 建议 |
 | --- | --- | --- | --- | --- |
@@ -814,7 +878,7 @@ if "Authorization" in request.headers:
 | SEC-03 | 高（公网） | 登录/注册/找回/TFA/恢复码 | 无限流、无锁定、无验证码 | 反向代理/WAF 限流，或业务层加失败计数/延迟 |
 | SEC-04 | 中 | `flask-exts/docs/configure.rst` vs 代码 | `TFA_EXEMPT_ENDPOINTS` 有文档但未实现 | 实现该配置，或从文档移除并说明 |
 | SEC-05 | 中 | `usercenter/forms/register.py` | 注册邮箱只有 `DataRequired()`，无 `Email()` | 补 `Email()`/长度校验 |
-| SEC-06 | 中 | 密码表单 | 仅长度限制；无复杂度/泄露密码检查 | 增加策略与泄露密码检查 |
+| SEC-06 | 中 | 密码策略/表单 | 快照未见常见或泄露密码阻断；服务端 API 可绕过表单长度限制（当前未复核） | 按适用标准评估阻断要求并统一校验；不默认要求字符组合 |
 | SEC-07 | 中 | `security/keys.py` + `encryptor` | 轮换 `SECRET_KEY` 会使 TOTP secret 无法解密 | 提供重加密迁移或提前重绑 |
 | SEC-08 | 中 | `login_ext.py` | JWT 不随密码变更失效 | 加入 `token_version` 或缩短 TTL |
 | SEC-09 | 低-中 | 邮件令牌 | 令牌在 URL query，可能进 Referer/日志 | `Referrer-Policy: no-referrer`、日志脱敏、短 TTL |
@@ -825,15 +889,15 @@ if "Authorization" in request.headers:
 | SEC-14 | 低 | 用户模型 | `status`、`expired_at` 字段未使用 | 实现或移除，避免误以为已生效 |
 | SEC-15 | 信息 | Admin 视图 | 匿名访问模型视图返回 403，不是登录重定向 | 需要跳转登录时加 `@login_required` |
 | SEC-16 | 中 | `usercenter/user_view.py::enable_tfa` | 关闭 TFA 只清 `totp_secret`，不清 `recovery_codes`；重新启用后旧恢复码仍可能有效 | 禁用/重绑时清空恢复码并强制重新生成 |
-| SEC-17 | 中-高 | `emailer/smtp.py::SmtpSSL` | 未传入 SSL context，`SMTP_SSL` 默认不校验证书/主机名，存在 MITM 风险 | 显式 `ssl.create_default_context()`，并暴露配置项 |
+| SEC-17 | 中-高 | `emailer/smtp.py::SmtpSSL` | HEAD 中未显式传入 SSL context；默认证书/主机名校验行为依赖 Python 版本，未在本轮核验 | 显式传入 `ssl.create_default_context()`，并补跨支持版本测试 |
 | SEC-18 | 中 | `emailer/base.py::send_email` | 找不到 sender 时把完整 `data` 写入 warning 日志，可能包含验证/重置链接和令牌 | 只记录 `type`/收件人，令牌与链接脱敏 |
-| SEC-19 | 中 | `admin/model/view.py::ajax_update` | 只检查 `column_editable_list`，未检查 `can_edit`；内联编辑可绕过视图级编辑开关 | 增加 `can_edit` 检查并补测试 |
+| SEC-19（V-01 别名） | 中 | 见 `spec.md` 的 V-01 | 内联编辑可能绕过视图级编辑开关 | 详情与修复建议见 [`spec.md` 第 10.16 节](./spec.md#1016-已知问题与回归) |
 
 ## 12. 测试覆盖与缺口
 
 ### 12.1 现有安全相关测试
 
-安全测试文件及覆盖范围的历史快照维护在 [`testing.md` 第 1.2 节](./testing.md#12-现有测试分布)。路径、断言和当前执行情况尚须结合源码核实。
+安全相关测试文件清单与本轮完整套件结果见 [`testing.md` 第 1 节](./testing.md#1-测试现状盘点)。全套测试通过不等同于每条安全风险均有针对性断言；具体覆盖仍按各测试用例和源码证据核实。
 
 ### 12.2 测试缺口
 
