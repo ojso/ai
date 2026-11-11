@@ -1712,7 +1712,7 @@ python -m pytest -q tests/performance -m performance
 | Job | 触发 | 内容 |
 | --- | --- | --- |
 | `tests` | push / PR / 手动 | Python 3.11、3.12、3.13 矩阵；`uv sync --locked` 后运行 `uv run pytest -q`。3.11 验证最低支持，3.13 验证主力版本 |
-| `coverage` | push / PR / 手动 | Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m`，上传 `.coverage` artifact；未设置 `fail-under` 门槛 |
+| `coverage` | push / PR / 手动 | Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m` + `coverage xml`，上传 `coverage.xml` artifact；未设置 `fail-under` 门槛 |
 | `lint` | 仅 PR | 仅对变更文件运行 `ruff check`、`ruff format --check` 与 `djlint --check`，规避仓库历史格式问题 |
 
 说明：
@@ -1725,7 +1725,7 @@ python -m pytest -q tests/performance -m performance
 
 ### 11.4 产物
 
-- `.coverage`（`coverage-data` artifact，已实现）
+- `coverage.xml`（`coverage-data` artifact，已实现）
 - 目标产物：`coverage.xml` / `htmlcov/`、`benchmark.json`（pytest-benchmark）、浏览器失败截图/HTML、Sphinx 构建日志
 
 ### 11.5 本地与 CI 一致性
