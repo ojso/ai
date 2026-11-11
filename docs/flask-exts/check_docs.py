@@ -4,20 +4,28 @@
 检查项：
 1. 代码围栏（```）成对闭合（奇偶性）。
 2. Markdown 表格列数一致性（表头、分隔线与数据行）。
-3. 本地相对文件路径有效性（含指向代码仓库的 flask-exts/ 路径）。
+3. 本地相对文件路径有效性；`flask-exts/` 前缀的仓库路径仅在设置
+   `FLASK_EXTS_REPO` 环境变量时校验。
 4. 内部 Heading 锚点与显式 <a id="..."> 标签有效性。
+5. 结构性检查：标题缺少空格、标题与正文粘连、编号深度与标题层级不一致。
 
 用法：
     python check_docs.py
+    FLASK_EXTS_REPO=/path/to/flask-exts python check_docs.py
 """
 
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+import os
 import re
 import sys
 
 ROOT = Path(__file__).resolve().parent
-REPO = Path.home() / "projects" / "flask-exts"
+REPO = (
+    Path(os.environ["FLASK_EXTS_REPO"]).expanduser().resolve()
+    if os.environ.get("FLASK_EXTS_REPO")
+    else None
+)
 
 
 def slugify(text: str) -> str:
@@ -69,16 +77,53 @@ def collect_anchors(path: Path) -> set[str]:
     return ids
 
 
+def check_structure(name: str, lines: list[str]) -> list[str]:
+    """检查标题空格、标题粘连与编号层级。"""
+    errors: list[str] = []
+    in_fence = False
+
+    for num, line in enumerate(lines, 1):
+        if line.strip().startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+
+        # 标题标记后缺少空格，例如 "##标题"。
+        if re.match(r"^#{1,6}[^#\s]", line):
+            errors.append(f"{name}:{num}: 标题标记后缺少空格 -> {line.strip()[:60]}")
+
+        # 标题与正文粘连，例如 "正文## 标题"；要求标题标记前是非空白且非 # 字符。
+        if re.search(r"[^\s#]#{2,6}\s", line):
+            errors.append(f"{name}:{num}: 标题与正文粘连，标题前应有换行 -> {line.strip()[:60]}")
+
+        # 编号深度应与标题层级一致：H2=1 段、H3=2 段、H4=3 段……
+        heading = re.match(r"^(#{1,6})\s+(\d+(?:\.\d+)*)\.?\s", line)
+        if heading:
+            level = len(heading.group(1))
+            expected = len(heading.group(2).split(".")) + 1
+            if level != expected:
+                errors.append(
+                    f"{name}:{num}: 编号 {heading.group(2)} 使用 H{level}，"
+                    f"按层级应为 H{expected} -> {line.strip()[:60]}"
+                )
+
+    return errors
+
+
 def main() -> int:
     errors: list[str] = []
     md_files = sorted(ROOT.glob("*.md"))
     anchor_cache: dict[Path, set[str]] = {}
+    skipped_repo_links = 0
 
     for src in md_files:
         lines = src.read_text(encoding="utf-8").splitlines()
         fences = sum(1 for line in lines if line.strip().startswith("```"))
         if fences % 2 != 0:
             errors.append(f"{src.name}: 代码围栏未闭合（总数={fences}，应为偶数）")
+
+        errors.extend(check_structure(src.name, lines))
 
         in_fence = False
         table_rows: list[tuple[int, int]] = []
@@ -109,7 +154,10 @@ def main() -> int:
                 raw_path = unquote(parsed.path)
 
                 if raw_path.startswith("flask-exts/"):
-                    dst = REPO / raw_path[len("flask-exts/"):]
+                    if REPO is None:
+                        skipped_repo_links += 1
+                        continue
+                    dst = REPO / raw_path[len("flask-exts/") :]
                 elif raw_path:
                     dst = (src.parent / raw_path).resolve()
                 else:
@@ -138,6 +186,12 @@ def main() -> int:
         return 1
 
     print(f"自检通过！已核验 {len(md_files)} 份文档：代码围栏、表格列数、相对路径和内部锚点全部有效。")
+    print("结构性检查通过：标题空格、标题粘连与编号层级均正常。")
+    if skipped_repo_links:
+        print(
+            f"跳过 {skipped_repo_links} 个 `flask-exts/` 仓库链接；"
+            "设置 FLASK_EXTS_REPO 后可校验。"
+        )
     return 0
 
 

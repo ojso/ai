@@ -4,8 +4,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-11 |
+> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
 
 ## 目录
@@ -74,7 +74,7 @@ Flask-Exts 是一个面向 Flask 的扩展集合，用于把常见的 Web 基础
 4. 将认证、安全、用户存储、Admin 等能力尽量标准化，复用同一套应用上下文。
 5. 让工程在早期仍可演进，同时保留对测试、审查和扩展的可验证性。
 
-## 3.1 首版缺口与优先级（历史快照）
+### 3.1 首版缺口与优先级（历史快照）
 
 本节记录 v0.1 初始规划，不代表当前缺口或优先级。现行缺口导航见 `README.md` 第 8 节；具体状态以对应权威文档中的证据为准。
 
@@ -1133,7 +1133,7 @@ class TreeView(SqlaModelView):
 | 自定义列表模板 | 第 10.14.2 节 |
 | 自定义页面 | 第 10.14.3 节 |
 
-#### 10.15.7 自定义后端
+#### 10.15.2 自定义后端
 
 ```python
 from flask_exts.admin.model.view import ModelView
@@ -1160,6 +1160,7 @@ admin.register_view(jsonview)
 | C6 | 低 | 同上 | 手写查询字符串未 URL 编码 | `urlencode` |
 | C7 | 低 | `datastore/sqla/query_builders/` | 运行时未使用，和 `Query` 形成两套抽象 | 删除或合并 |
 | C10 | 低 | 扩展管理器的晚注册路径 / `AdminExtension.post_init` | 新扩展会执行自身初始化，但不会重跑 Admin 的视图扫描；晚注册扩展提供的 `AdminViewMixin` 不会自动被收集 | 文档化或提供显式刷新机制 |
+| C11 | 中 | `extension_core/registry.py::ExtensionRegistry.shutdown_all` | 关闭时只捕获 `ExtensionError`，其他异常会中断逆序关闭，与 `REQ-EXT-004` 的单扩展异常隔离契约冲突 | 逐扩展隔离普通异常并记录 warning，补测试；详见第 11.4.3 节 |
 | V-01 | 中 | `admin/model/view.py::ajax_update` | 只检查 `column_editable_list`，未检查 `can_edit` | 内联编辑可能绕过视图级编辑开关；补 `can_edit` 检查与测试 |
 | V-02 | 低 | `admin/model/handlers/rowactions.py` / `rowsaction.py` | `RowActionHandler`（单行）与 `RowsActionHandler`（批量）命名只差一个 `s`，文件名也近似 | 重命名为 `RowActionHandler` / `BulkActionHandler`，文件 `row_actions.py` / `bulk_actions.py` |
 
@@ -1385,7 +1386,7 @@ list_template / create_template / edit_template / details_template
 
 ##### C11：扩展关闭异常未完全隔离
 
-源码 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all` 只捕获 `ExtensionError`。其他普通异常会中断逆序关闭循环；现有测试 `tests/unit/extension_core/test_registry.py::test_shutdown_exception` 明确断言 `ValueError` 向外传播。这与 `REQ-EXT-004` 的单扩展异常隔离契约冲突。完整套件本轮结果虽为 229 passed、1 skipped，但该现有测试验证的是相反行为，不能据此标记契约通过。
+源码 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all` 只捕获 `ExtensionError`。其他普通异常会中断逆序关闭循环；现有测试 `tests/unit/extension_core/test_registry.py::test_shutdown_exception` 明确断言 `ValueError` 向外传播。这与 `REQ-EXT-004` 的单扩展异常隔离契约冲突。完整套件本轮运行结果见 `testing.md` 第 1.1 节，但该现有测试验证的是相反行为，不能据此标记契约通过。
 
 **建议：** 按契约逐扩展隔离普通异常、记录 warning 并继续关闭；补充测试确认后续扩展仍关闭且状态清理完成。不要捕获 `BaseException`。本轮仅更新文档，未修改源码或测试。
 

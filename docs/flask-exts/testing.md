@@ -6,17 +6,17 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`；测试清单和统计已复核） |
+> | 最后更新 | 2026-11-11 |
+> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；测试清单和统计已复核） |
 > | 适用仓库 | `flask-exts` |
 > | 文档驱动 | `architecture.md`：架构；`spec.md`：设计和实现，第 10 章涵盖 View/Admin 路由、ModelView、DataBackend、Inline、AJAX、导出 |
 > | 行为契约 | `requirements.md`：`REQ-*`、验收标准、追溯 |
 > | 测试驱动 | `testing.md`（本文）：测试策略、用例、执行计划、质量门禁 |
 > | 安全治理 | `security.md`：威胁模型、控制措施、风险清单、发布检查 |
 >
-> **文档状态说明**：本文的测试目录与数量以 2026-11-10 的 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`，源码/测试中未发现 `mail_outbox`；这些仍属目标结构。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
+> **文档状态说明**：本文的测试目录与数量以 2026-11-11 的 HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`（发布版本 `0.4.1`）为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`，源码/测试中未发现 `mail_outbox`；这些仍属目标结构。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
 >
-> **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文的规划不代表 CI 或测试已实现。
+> **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文中标记为目标的规划不代表已实现；当前 CI 实现范围见第 11 节。
 
 ## 目录
 
@@ -43,47 +43,45 @@
 
 ### 0.1 环境准备
 
-以下命令在用户确认的仓库根目录执行；仓库位置每轮任务开始时确认，不假定固定路径。按仓库 `AGENTS.md` 使用项目内虚拟环境，不要全局安装：
+以下命令在用户确认的仓库根目录执行；仓库位置每轮任务开始时确认，不假定固定路径。按仓库 `AGENTS.md` 使用 uv 管理的项目内虚拟环境，不要全局安装：
 
 ```bash
-test -d venv || python3 -m venv venv
-. venv/bin/activate
-python -m pip install -e '.[dev,test]'
+uv sync
 ```
 
-文档构建依赖（仅在改文档时需要）：
+`uv sync` 会自动创建/更新项目内 `.venv`，安装运行时依赖及 `dev` 依赖组；该组包含测试工具与文档构建依赖（`docs` 组）。未激活虚拟环境时，后续命令统一使用 `uv run` 前缀（例如 `uv run pytest -q`）；本文其余小节沿用已激活环境下的 `python -m ...` 写法。
 
-```bash
-python -m pip install -r docs/requirements.txt
-```
+文档构建依赖已包含在 `dev` 组中，无需单独安装。
 
 ### 0.2 第一条命令
 
 ```bash
 # 全量测试
-python -m pytest -q
+uv run pytest -q
 
 # 只跑某个文件
-python -m pytest -q tests/unit/datastore/sqla/test_query.py
+uv run pytest -q tests/unit/datastore/sqla/test_query.py
 
 # 只跑某个目录
-python -m pytest -q tests/integration/admin
+uv run pytest -q tests/integration/admin
 
 # 带覆盖率
-coverage run -m pytest -q
-coverage report -m
+uv run coverage run -m pytest -q
+uv run coverage report -m
 ```
 
 安全相关测试入口（路径与可执行性需结合仓库当前状态核实）：
 
 ```bash
-python -m pytest -q tests/unit/security
-python -m pytest -q tests/integration/security
-python -m pytest -q tests/integration/usercenter/test_user_view.py
-python -m pytest -q tests/unit/forms/form/test_form.py
+uv run pytest -q tests/unit/security
+uv run pytest -q tests/integration/security
+uv run pytest -q tests/integration/usercenter/test_user_view.py
+uv run pytest -q tests/unit/forms/form/test_form.py
 ```
 
 > 当前 `pyproject.toml` 已开启 `--strict-markers`。在 3.3 的 markers 尚未注册前，不要使用 `-m unit` 这类命令，否则 pytest 会直接报错。
+>
+> 项目级 pytest 配置已将 `DeprecationWarning` 视为错误；修复行为或依赖问题，不要在单个测试中过滤告警。
 
 ### 0.3 本文阅读顺序
 
@@ -111,17 +109,17 @@ python -m pytest -q tests/unit/forms/form/test_form.py
 
 | 指标 | 当前值 | 说明 |
 | --- | --- | --- |
-| 测试文件 | 46 个 `test_*.py` | 全部位于 `tests/unit/` 与 `tests/integration/` |
-| 测试函数 | 193 个 | 以 `def test_...` 统计 |
-| 断言 | 约 916 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
+| 测试文件 | 47 个 `test_*.py` | 全部位于 `tests/unit/` 与 `tests/integration/` |
+| 测试函数 | 210 个 | 以 `def test_...` 统计 |
+| 断言 | 约 950 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
 | 测试框架 | pytest | `pyproject.toml` 配置 |
-| 覆盖率工具 | `pytest-cov` / `coverage` | 已有可选依赖，但无基线门槛 |
+| 覆盖率工具 | `pytest-cov` / `coverage` | 已列入 `dev` 组；已测定基线，CI 每轮报告覆盖率，尚无 `fail-under` 门槛 |
 | E2E 目录 | 无 | `tests/e2e/` 尚未创建 |
 | 性能目录 | 无 | `tests/performance/` 尚未创建 |
 | 浏览器测试 | 无 | 未引入 Selenium/Playwright |
 | 基准工具 | 无 | 未引入 `pytest-benchmark` |
 | 数据工厂 | 无 | 未引入 `factory-boy` / `faker` |
-| 最近完整测试运行 | 229 passed, 1 skipped | 2026-11-10；Python 3.13.10；HEAD `171b40968f309c04ae3ad423696227c2767b0055`；跳过 `test_smtp.py`，未配置 `REAL_EMAIL_SENDER` |
+| 最近完整测试运行 | 245 passed, 1 skipped | 2026-11-11；Python 3.13.5；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`（发布版本 `0.4.1`）；跳过 `test_smtp.py`，未配置 `REAL_EMAIL_SENDER` |
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -141,7 +139,7 @@ addopts = "-ra --strict-markers --strict-config"
 | `integration/admin` | 53 | 完整入口见 1.2.1 | 历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键；现状待核实 |
 | `unit/extension_core` | 30 | `test_registry.py`、`test_manager.py` | 覆盖依赖排序、循环依赖、幂等、关闭、内置扩展装配 |
 | `unit/admin` | 19 | `test_mockview.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py` | 覆盖视图元数据与格式化，偏“配置读取” |
-| `unit/forms` | 19 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py` | 覆盖字段、文件、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补 |
+| `unit/forms` | 23 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py` | 覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补 |
 | `integration/usercenter` | 14 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、TFA 启用/关闭/登录/防绕过、inactive 账号、改密码、找回/重置、恢复码 |
 | `unit/datastore` | 14 | `test_db.py`、`test_query.py` | 覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖 |
 | `unit/security` | 9 | `tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py` | 授权包括 admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行 |
@@ -155,7 +153,7 @@ addopts = "-ra --strict-markers --strict-config"
 
 #### 1.2.1 Admin 测试文件清单
 
-以下文件路径已与 2026-11-10 的仓库 HEAD 核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
+以下文件路径已与 2026-11-11 的仓库 HEAD 及当前工作树核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
 
 - `tests/integration/admin/sqla/test_views.py`
 - `tests/integration/admin/sqla/test_forms.py`
@@ -177,8 +175,8 @@ addopts = "-ra --strict-markers --strict-config"
 | --- | --- | --- |
 | 无 HTTP 级 E2E 流程测试 | 跨模块流程（注册→验证→登录→TFA）只能靠零散集成测试拼接 | 目标见第 13 节 |
 | 无性能基准 | 无法量化列表查询、搜索、渲染、认证的退化 | 目标见第 13 节 |
-| 无覆盖率基线 | 无法判断目标是否达到 | 目标见第 13 节 |
-| CI 未检查本套 Markdown 与 demo smoke | 外部文档死链、demo 启动问题不会被现有 CI 捕获 | 仓库 Sphinx 构建已在 `docs.yml`；本套文档的链接检查与 demo smoke 仍待接入 |
+| 覆盖率无 CI 门槛 | 覆盖率回退无法自动阻断 | 基线见第 10.5 节；`ci.yml` 已报告覆盖率，门槛见第 10.3 节 |
+| CI 未检查本套 Markdown 与 demo smoke | 外部文档死链、demo 启动问题不会被现有 CI 捕获 | 仓库 Sphinx 构建与测试 CI 已在 `docs.yml` / `ci.yml`；本套文档的链接检查与 demo smoke 仍待接入 |
 | 一对多搜索计数未断言 | `build_count` 重复计数风险可能潜伏 | 新增 |
 | Inline + AJAX 外键未覆盖 | `create_ajax_loader` 参数缺陷可能未被触发 | 新增 |
 | `UserStore.get_users` / `remove_user` 未覆盖 | 接口契约与实现不一致 | 新增 |
@@ -189,11 +187,11 @@ addopts = "-ra --strict-markers --strict-config"
 
 ### 1.4 与目标基线的差距
 
-目标、当前状态与差距统一见第 13 节，本节不重复指标。当前优先事项为 E2E、性能基线、覆盖率测量与 CI 门禁；阶段行动见第 12 节。
+目标、当前状态与差距统一见第 13 节，本节不重复指标。当前优先事项为 E2E、性能基线，以及覆盖率门槛（`ci.yml` 已报告覆盖率，尚未设置 `fail-under`）；阶段行动见第 12 节。
 
 ### 1.5 数据快照与重新统计
 
-本文的 46 / 193 / 916 已按 2026-11-10 的 HEAD 重新统计，与上一快照相同。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 47 / 210 / 950 已按 2026-11-11 的 HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`（发布版本 `0.4.1`）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -329,13 +327,12 @@ tests/
 │   │   └── form/
 │   ├── frontend/
 │   │   └── macros/
-│   ├── security/
-│   ├── usercenter/             # 目前为空
-│   └── userstore/              # 目前为空
+│   └── security/
 └── integration/
     ├── admin/
     │   ├── model/
     │   └── sqla/
+    │       └── models/
     ├── builtin_extensions/
     ├── data/                   # 上传测试用图片等静态数据
     ├── security/
@@ -1601,15 +1598,15 @@ skip_covered = true
 
 ### 10.3 质量门禁
 
-建议在 CI 中设置：
+当前 CI 与建议门禁：
 
-1. 所有测试通过（Python 3.10–3.13）。
-2. 无新增 `skip`/`xfail`（除非有 issue 链接和期限）。
-3. `ruff check` 通过（至少变更文件）。
-4. `sphinx -W` 通过（文档无 warning）。
-5. `djlint --check` 通过（变更模板）。
-6. 覆盖率不低于基线；新增代码行覆盖率 ≥ 80%。
-7. 性能基准不退化超过 20%（夜间任务，非阻塞合并）。
+1. 所有测试通过（Python 3.11–3.13）。（已实现：`tests` job）
+2. 无新增 `skip`/`xfail`（除非有 issue 链接和期限）。（目标）
+3. `ruff check` 通过（至少变更文件）。（已实现：`lint` job，仅 PR）
+4. `sphinx -W` 通过（文档无 warning）。（已实现：`docs.yml`）
+5. `djlint --check` 通过（变更模板）。（已实现：`lint` job）
+6. 覆盖率不低于基线；新增代码行覆盖率 ≥ 80%。（目标；`coverage` job 目前只报告）
+7. 性能基准不退化超过 20%（夜间任务，非阻塞合并）。（目标）
 
 ### 10.4 关键路径清单
 
@@ -1627,17 +1624,20 @@ skip_covered = true
 
 ### 10.5 覆盖率基线记录
 
-首次测量后填写；在此之前，10.1 的“目标”只是初始目标，不是已达成的门槛。
+基线已首次测定；后续代码或依赖变化后重新测量并追加记录。10.1 的“目标”仍只是目标，不是已配置的 CI 门槛。
 
 | 日期 | commit | 行覆盖 | 分支覆盖 | 函数覆盖 | 命令 | 备注 |
 | --- | --- | ---: | ---: | ---: | --- | --- |
 | 2026-11-10 | `171b40968f309c04ae3ad423696227c2767b0055` | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 首次实测基线（229 passed, 1 skipped；全套 31.81s） |
+| 2026-11-11 | `171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 当前工作树复测（233 passed, 1 skipped；全套 32.79s；8601 statements, 866 missed） |
+| 2026-11-11 | `171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 修复 `ChoiceField` 后复测（245 passed, 1 skipped；全套 32.49s；8685 statements, 862 missed） |
+| 2026-11-11 | `03006024d21167c0f6285a5724a3be5ef24d9a59`（v0.4.1） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 发布提交复测（245 passed, 1 skipped；全套 31.25s；8685 statements, 862 missed） |
 
 规则：
 
 - 基线必须与 commit 绑定；代码变化后重新测量。
 - 目标改为“基线 + 新增代码 ≥ 80%”，避免整体数字掩盖新代码缺口。
-- 覆盖率下降超过 1% 时，CI 给出 warning；下降超过 3% 时阻塞合并（阈值可按团队调整）。
+- 覆盖率下降超过 1% 时，CI 给出 warning；下降超过 3% 时阻塞合并（阈值可按团队调整；当前尚未实现）。
 
 ### 10.6 排除项与理由
 
@@ -1653,7 +1653,7 @@ skip_covered = true
 
 ## 11. CI 流水线
 
-> **状态声明**：当前仓库仅有 Sphinx 文档构建（`.github/workflows/docs.yml`）与发行构建 workflow，**没有**自动运行测试套件的 workflow。本章列出的全流程测试流水线为规划草案，不代表仓库已有实现。
+> **状态声明**：仓库已有文档构建（`.github/workflows/docs.yml`）、发行构建（`.github/workflows/release.yml`）与测试 workflow（`.github/workflows/ci.yml`）。测试 workflow 提供 Python 3.11–3.13 矩阵、覆盖率报告与仅针对 PR 变更文件的 lint；E2E、浏览器与性能流水线仍为规划，未落地。
 
 ### 11.1 阶段设计
 
@@ -1674,7 +1674,11 @@ skip_covered = true
            └──────────────────────────┘
 ```
 
+> 图中 Lint/Unit/Integration 为分层目标；当前 `ci.yml` 用单个 `tests` job 运行全量 pytest，`coverage` 独立成 job，`lint` 仅在 PR 上检查变更文件，Docs 由独立 workflow 执行。
+
 ### 11.2 命令
+
+以下命令假定已完成 `uv sync` 并激活 `.venv`；未激活时给命令加 `uv run` 前缀。
 
 ```bash
 # Lint
@@ -1701,59 +1705,41 @@ python -m pytest -q tests/e2e -m e2e
 python -m pytest -q tests/performance -m performance
 ```
 
-### 11.3 测试工作流草案（未落地）
+### 11.3 测试工作流（已落地）
 
-```yaml
-name: tests
+权威来源为仓库 `.github/workflows/ci.yml`；本节只描述职责，不复制完整 YAML。
 
-on:
-  push:
-  pull_request:
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - run: python -m pip install -e '.[dev,test]'
-      - run: python -m pip install -r docs/requirements.txt
-      - run: python -m pytest -q tests/unit tests/integration
-      - run: coverage run -m pytest -q
-      - run: coverage report -m
-      - run: python -m sphinx -b html docs docs/_build/html -W -n --keep-going
-```
+| Job | 触发 | 内容 |
+| --- | --- | --- |
+| `tests` | push / PR / 手动 | Python 3.11、3.12、3.13 矩阵；`uv sync --locked` 后运行 `uv run pytest -q`。3.11 验证最低支持，3.13 验证主力版本 |
+| `coverage` | push / PR / 手动 | Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m`，上传 `.coverage` artifact；未设置 `fail-under` 门槛 |
+| `lint` | 仅 PR | 仅对变更文件运行 `ruff check`、`ruff format --check` 与 `djlint --check`，规避仓库历史格式问题 |
 
 说明：
 
-- `flask-exts/docs/requirements.txt` 必须单独安装，否则 `sphinx` 步骤会因缺少主题/扩展失败。
+- Sphinx 依赖由 `pyproject.toml` 的 `docs` 依赖组维护（已包含在 `dev` 组中），`uv sync` 会一并安装，无需单独安装 `docs/requirements.txt`。
+- `uv sync --locked` 要求 `uv.lock` 已提交且与 `pyproject.toml` 一致，否则 job 直接失败。
+- 主力 Python 版本锚定 Debian stable（当前 3.13），最低支持保持 3.11；决策见 [`architecture.md` ADR-005](./architecture.md#adr-005-开发与主力验证-python-版本锚定-debian-stable)。
 - 仓库存在历史 Ruff/模板格式问题，`ruff`/`djlint` 在 CI 中只检查**本次变更文件**，不要全量检查。
-- 夜间任务可单独加 `browser` 与 `performance` job，允许失败但不阻塞主分支。
+- 夜间任务可单独加 `browser` 与 `performance` job，允许失败但不阻塞主分支；当前尚未落地。
 
 ### 11.4 产物
 
-- `coverage.xml` / `htmlcov/`
-- `benchmark.json`（pytest-benchmark）
-- 浏览器失败截图/HTML
-- Sphinx 构建日志
+- `.coverage`（`coverage-data` artifact，已实现）
+- 目标产物：`coverage.xml` / `htmlcov/`、`benchmark.json`（pytest-benchmark）、浏览器失败截图/HTML、Sphinx 构建日志
 
 ### 11.5 本地与 CI 一致性
 
 | 目标 | 本地命令 | CI 阶段 |
 | --- | --- | --- |
-| Lint | `python -m ruff check .` | Lint |
-| 模板 | `python -m djlint <changed> --check` | Lint（变更模板） |
-| Unit | `python -m pytest -q tests/unit` | Unit |
-| Integration | `python -m pytest -q tests/integration` | Integration |
-| 覆盖率 | `coverage run -m pytest -q` | Coverage |
-| 文档 | `python -m sphinx -b html docs docs/_build/html -W -n --keep-going` | Docs |
-| E2E | `python -m pytest -q tests/e2e -m e2e` | E2E |
-| 性能 | `python -m pytest -q tests/performance -m performance` | Nightly |
+| Lint | `uv run python -m ruff check .`（全量；CI 只查变更文件） | `lint` job（仅 PR） |
+| 模板 | `uv run python -m djlint <changed> --check` | `lint` job（仅 PR，变更模板） |
+| Unit | `uv run python -m pytest -q tests/unit` | `tests` job |
+| Integration | `uv run python -m pytest -q tests/integration` | `tests` job |
+| 覆盖率 | `uv run coverage run -m pytest -q` | `coverage` job（无门槛） |
+| 文档 | `uv run python -m sphinx -b html docs docs/_build/html -W -n --keep-going` | 独立 `docs.yml` |
+| E2E | `uv run python -m pytest -q tests/e2e -m e2e` | 未落地 |
+| 性能 | `uv run python -m pytest -q tests/performance -m performance` | 未落地（Nightly） |
 
 仓库 `Makefile` 已提供 `coverage` / `coverage-report`，本地优先复用，避免命令漂移。
 
@@ -1771,7 +1757,7 @@ jobs:
 
 #### Phase 0：基线与清理（1–2 天）
 
-- [ ] 运行全量测试，记录通过数/耗时
+- [x] 运行全量测试，记录通过数/耗时
 - [ ] 运行 `coverage`，记录行/分支/函数覆盖率
 - [ ] 注册 markers（unit/integration/e2e/browser/performance/slow）
 - [ ] 新增 `mail_outbox` fixture，替换 `mail_data`
@@ -1825,7 +1811,8 @@ jobs:
 - [ ] N+1 检测（列表/搜索/Inline）
 - [ ] 查询/渲染/登录基准
 - [ ] 记录基线，设置合理阈值
-- [ ] CI 加覆盖率、文档构建、E2E
+- [x] CI 加入覆盖率报告与文档构建（`.github/workflows/ci.yml`、`docs.yml`；GitHub 实际运行待验证）
+- [ ] CI 加入 E2E
 - [ ] 夜间性能/浏览器任务（可选）
 
 **验收：** 性能基线可重复；CI 绿灯；覆盖率达标。
@@ -1845,7 +1832,7 @@ jobs:
 | 集成测试 | 30+ | 约 80+ 个集成测试函数，已超额 | 不再追求数量，补关键缺口 |
 | E2E 测试 | 20+ | 0 | Phase 3 在 `tests/e2e/` 覆盖核心旅程；阶段验收见第 12 节 |
 | 性能测试 | 15+ | 0 | Phase 4 建 `tests/performance/` 并建立基线；阶段行动见第 12 节 |
-| 覆盖率 | ≥85% | 90%（2026-11-10 实测） | 已达标，作为基线监控防退化 |
+| 覆盖率 | ≥85% | 90%（2026-11-11 实测） | 已达标，作为基线监控防退化 |
 | 分支覆盖 | ≥75% | 未测量 | 同上 |
 | 函数覆盖 | ≥90% | 未测量 | 同上 |
 | 关键路径 | 100% | 未系统定义 | 第 6/10 节已列清单 |
@@ -1854,7 +1841,7 @@ jobs:
 | Fixtures | app/client/db/user/admin/auth | 已有 app/client/admin/login_as_admin | 补 db_setup/user_factory/mail_outbox |
 | 数据库事务 | 有设计 | 0 | 新增 TC-DATA-019～TC-DATA-027 |
 | 错误处理 | 未明确 | 0 | 新增 TC-ERROR-001～TC-ERROR-008 |
-| CI/CD | 集成 | 基础测试，无文档/覆盖率门禁 | Phase 4 补 |
+| CI/CD | 集成 | `ci.yml` 已运行 Python 3.11–3.13 矩阵、覆盖率报告与 PR 变更文件 lint；`docs.yml` 构建文档；尚无 `fail-under` 门槛与 E2E | Phase 4 补 |
 | 测试文档 | 完整 | 本文 v0.1 | 已补齐；按 Phase 0 升 v1.0 |
 
 **对历史“完成声明”的说明：**
@@ -1874,7 +1861,7 @@ jobs:
 | T5 | Inline AJAX 未触发缺陷 | `tests/integration/admin/sqla/test_inline_ajax.py` | C1 可能漏测 | 配置子模型 `ajax_refs` 并访问页面 |
 | T6 | `get_users`/`remove_user` 无测试 | `tests/integration/userstore/` | 接口不一致 | 补契约测试 |
 | T7 | CLI 无测试 | 无 | 命令回归无保护 | 新增 `test_commands.py` |
-| T8 | 无 E2E/性能/覆盖率基线 | 全局 | 质量不可度量 | 按 Phase 3/4 落地 |
+| T8 | 无 E2E/性能基线 | 全局 | 跨模块流程与性能退化不可度量 | 按 Phase 3/4 落地；覆盖率基线已见 10.5 |
 | T9 | 测试名偏泛 | `test_base`、`test_from` 等 | 可读性差 | 改为行为描述 |
 | T10 | 注释/print 残留 | 多个测试 | 噪音 | 清理，保留必要说明 |
 | T11 | 临时目录 | `tests/tmp`、`tests/integration/tmp`、`tests/integration/data` | 可能污染仓库 | 确认用途，加入 `.gitignore` 或清理 |
@@ -1884,7 +1871,7 @@ jobs:
 | T15 | 文档示例与仓库未对齐 | 第 4、8、9 节 | 复制示例无法直接运行 | Phase 0 落地 fixture/marker，示例标注状态 |
 | T16 | 统计数字易过期 | 1.1/1.2 | 文档失真 | 用 1.5 脚本定期重算 |
 | T17 | 邮件/信号载荷契约未文档化 | `security/token_action.py` | 测试断言字段靠猜 | 在 7.12 固定字段表并加契约测试 |
-| T18 | 覆盖率基线未记录 | 10.1/10.5 | 无法判断是否达标 | Phase 0 测量并填写 |
+| T18 | 覆盖率未设 CI 门槛 | 10.3/10.5 | 覆盖率回退无法自动阻断 | 以 10.5 基线设置阈值并接入 CI |
 | T19 | 上传/导出临时文件路径不统一 | forms/admin 测试 | 残留或互相覆盖 | 统一用 `tmp_path` |
 
 ## 15. 测试编写规范与检查清单
@@ -1933,6 +1920,7 @@ def test_something(app, client):
 - [ ] 测试代码保持英文（i18n 测试除外）
 - [ ] 新增公共 fixture 有 docstring
 - [ ] 变更缺陷时先写失败测试，再修复
+- [ ] 不通过 `warnings.catch_warnings()` / `simplefilter()` 局部处理 `DeprecationWarning`；直接断言声明版本下的行为
 
 ### 15.4 反模式
 
@@ -1945,6 +1933,8 @@ def test_something(app, client):
 | 测试中复制生产逻辑 | 双重维护 | 调用真实函数 |
 | 过度 mock | 测不到集成问题 | 只 mock 外部边界 |
 | 依赖当前时间 | 间歇失败 | 固定时间/相对时间 |
+| `catch_warnings()` + `simplefilter("error", DeprecationWarning)` | 掩盖对旧 API 的依赖，升级后仍可能失效 | 直接使用并断言新 API；弃用告警交给项目级 pytest 配置 |
+| `try: import ... except ImportError` 版本回退 | 兼容分支长期滞留，测试矩阵翻倍 | 只支持声明版本；无法支持时提升下限并记录变更 |
 
 ### 15.5 断言层次
 
@@ -1979,7 +1969,7 @@ def test_something(app, client):
 - [ ] markers 注册，默认运行排除 performance/browser
 - [ ] `mail_outbox`、`db_setup`、`user_factory`、`admin_user`、`authenticated_client` 可用
 - [ ] `query_counter`、`seeded_db`、`tmp_upload_dir` 可用
-- [ ] 覆盖率命令可重复执行，基线已记录
+- [x] 覆盖率命令可重复执行，基线已记录
 
 **测试覆盖**
 
@@ -1996,7 +1986,7 @@ def test_something(app, client):
 
 **质量门禁**
 
-- [ ] Python 3.10–3.13 全绿
+- [ ] Python 3.11–3.13 全绿
 - [ ] `ruff`、`sphinx -W`、`djlint` 通过
 - [ ] 无新增无理由 `skip`/`xfail`
 - [ ] CI 运行 unit/integration/coverage/docs/E2E

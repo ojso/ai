@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-11 |
+> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `requirements.md`（契约）、`spec.md`（实现、Admin、插件与数据库专题）、`security.md`（安全）、`testing.md`（验证）、`demo.md`（示例） |
 
@@ -42,7 +42,7 @@
 
 外部依赖：
 
-- Flask 3.x、WTForms 3.x、SQLAlchemy 2.x、Flask-Login、Flask-Babel、tablib、PyJWT、pyotp、cryptography。
+- Flask 3.x、WTForms 3.3+、SQLAlchemy 2.1+、Flask-Login、Flask-Babel、tablib、PyJWT、pyotp、cryptography。
 - `examples/demo` 使用 SQLite；库中的 `SqlaDb` 按 `SQLALCHEMY_DATABASE_URI` 绑定数据源，不能把 demo 配置泛化为全库默认。
 - 邮件：`smtplib.SMTP_SSL`；未配置 `NOREPLY_EMAIL_SENDER` 时不真正发信。
 
@@ -201,11 +201,11 @@ POST /user/verify_tfa/
 | 关注点 | 机制 | 详见 |
 | --- | --- | --- |
 | 安全 | 密钥派生、哈希、加密、令牌、CSRF、TFA、授权 | `security.md` |
-| 国际化 | Flask-Babel、翻译目录、时区 | `testing.md` 第 7.12 节 / `requirements.md` |
+| 国际化 | Flask-Babel、翻译目录、时区 | `testing.md` 第 7.13 节 / `requirements.md` |
 | 配置 | `app.config`、环境变量、实例配置 | 仓库 `flask-exts/docs/configure.rst` |
-| 信号 | `user_registered`、`to_send_email` | `testing.md` 第 7.8 节 / 本文第 3、4 章 |
-| 前端资源 | `frontend` 插件、依赖排序、vendor | `testing.md` 第 7.10 节 / `spec.md` 第 5 章 |
-| CLI | `datastore`、`security` 命令组 | `testing.md` 第 7.11 节 / `requirements.md` |
+| 信号 | `user_registered`、`to_send_email` | `testing.md` 第 7.12 节 / 本文第 3、4 章 |
+| 前端资源 | `frontend` 插件、依赖排序、vendor | `testing.md` 第 7.9 节 / `spec.md` 第 5 章 |
+| CLI | `datastore`、`security` 命令组 | `testing.md` 第 7.10 节 / `requirements.md` |
 | 测试 | pytest、Admin fixtures、安全/用户中心用例 | `testing.md` |
 | 示例 | `examples/demo`、`examples/simple` | `demo.md` |
 
@@ -224,6 +224,7 @@ POST /user/verify_tfa/
 | session 密码指纹 | 改密自动失效旧会话 | 不保护 JWT（见 `security.md` SEC-08） |
 | 无状态签名令牌 | 不需要服务端存储 | 无法主动撤销单个令牌，只能等过期/轮换密钥 |
 | SQLAlchemy 2.0 `Mapped` + `back_populates` | 类型清晰、关系显式 | 代码略冗长 |
+| 开发/主力 Python 锚定 Debian stable | 开发环境与系统一致 | 仅在发行版升级时提升，需同步 CI/RTD |
 
 ### 7.1 设计决策记录规范（ADR）
 
@@ -273,6 +274,32 @@ ADR-<序号>: <决策标题>
 - **风险**：轮换 `SECRET_KEY` 时会同时失效所有派生子密钥（包括 TOTP secret 加密密钥），需建立对应的重绑定/重加密流程。
 - **关联文档**：[`security.md` 第 2.2 节](./security.md#22-密钥派生)。
 
+#### ADR-004: 依赖基线提升为 Python >=3.11, WTForms >=3.3, SQLAlchemy >=2.1
+- **状态**：accepted（2026-11-11 维护者确认；已在 v0.4.1 实施）
+- **日期**：2026-11-11
+- **背景**：WTForms 3.3.x（3.3.0/3.3.1/3.3.2）的上游 `Requires-Python` 均为 `>=3.11`；SQLAlchemy 2.1 系列（抽查 2.1.0/2.1.8）的上游 `Requires-Python` 也为 `>=3.11`。同时 WTForms 3.3 将 choice 迭代结果从裸元组改为 `Choice`/`SelectChoice` 对象，对 tuple choices 发出弃用告警，并调整了 `FieldList` 条目命名。项目当前只在 SQLAlchemy 2.1.8 上验证，为避免长期维护 2.0 与 2.1 两套行为路径，选择同时提升 WTForms 与 SQLAlchemy 的下限。
+- **决策**：项目最低 Python 版本提升为 3.11；`pyproject.toml` 声明 `requires-python = ">=3.11"`、`WTForms>=3.3.2`、`SQLAlchemy>=2.1`，并移除 Python 3.10 classifier；测试文档与建议的 CI 矩阵只覆盖 3.11/3.12/3.13，SQLAlchemy 只覆盖 2.1.x。字段与 widget 按 WTForms 3.3 的 `Choice`/`SelectChoice` 行为实现，并在 `ChoiceField` 入口把 legacy tuple/dict choices 规范化为 `SelectChoice`，以消除 3.3 的弃用告警；不保留对 WTForms 3.2 及更早版本、SQLAlchemy 2.0 及更早版本的行为分支。
+- **下限修订（2026-11-11）**：WTForms 下限由 `>=3.3` 提升为 `>=3.3.2`。3.3.1 修复 FieldList 重编号时丢失 form prefix（#944），3.3.2 修复嵌套 FieldList 条目复用父级旧索引（#948）；项目的 Admin inline/model 表单使用 FieldList，需排除这两个已知缺陷版本。
+- **配套编码约束**：只为声明范围内的版本写代码。升级导致行为变化时，直接按新版本实现并提升下限，不写运行时兼容分支，例如 `try: from wtforms.fields import Choice, SelectChoice / except ImportError`、`hasattr`/`getattr` 回退、`sys.version_info` 或版本号判断。测试同样不得用 `warnings.catch_warnings()` 配合 `simplefilter("error", DeprecationWarning)` 局部处理弃用，应直接断言新版本行为，弃用告警由项目级 pytest 配置统一处理。该约束的代码侧权威说明见仓库 `AGENTS.md`。
+- **理由**：WTForms 3.3 与 SQLAlchemy 2.1 的上游下限都已经是 Python 3.11，继续支持 Python 3.10 只能锁定旧版依赖；同时维护两套 choices/`iter_choices` 或 ORM 行为会放大测试矩阵和回归风险。统一到 WTForms 3.3 与 SQLAlchemy 2.1 后，字段、widget、表单与 ORM 行为与上游一致，并消除 tuple choices 的弃用告警。
+- **备选方案**：继续声明 `WTForms<3.3`、`SQLAlchemy>=2.0` 并保留 Python 3.10（需要长期维护旧 choices/tuple 与 2.0 ORM 行为）；或同时支持 WTForms 3.3/旧版、SQLAlchemy 2.0/2.1（需在 `select.py`、`editable.py`、`QuerySelectField` 等位置保留双路径，测试矩阵翻倍）。
+- **风险**：下游 Python 3.10 或 SQLAlchemy 2.0.x 用户无法直接升级；WTForms 3.3 的 `Choice` 对象、`FieldList` 命名和 choices 规范化行为，以及 SQLAlchemy 2.1 的行为变化，可能影响自定义字段/模板或查询代码；回滚需同时恢复 `WTForms<3.3`、`SQLAlchemy>=2.0`、Python 3.10 声明及旧版字段/ORM 实现，并重跑 3.10 与 SQLAlchemy 2.0 矩阵。
+- **关联文档**：[`release.md` 第 3.1 节](./release.md#31-运行环境与依赖兼容性矩阵)、[`testing.md` 第 10.3 节](./testing.md#103-质量门禁)、[`README.md` 第 0.1 节](./README.md#01-准备环境python-311)。
+
+#### ADR-005: 开发与主力验证 Python 版本锚定 Debian stable
+- **状态**：accepted（2026-11-11 维护者确认）
+- **日期**：2026-11-11
+- **背景**：项目主要开发环境为 Debian stable；当前稳定版 Debian 13（trixie）默认 Python 3.13，仓库 `.venv`、CI 与 RTD 的主力任务均使用 3.13。ADR-004 已将最低支持版本定为 3.11，但没有记录“开发/主力版本如何选择、何时提升”的决策依据。
+- **决策**：
+  - 开发与主力验证 Python 版本跟随当前 Debian stable 的默认 Python：现为 3.13；仅当 Debian stable 升级并切换默认 Python 后，才同步提升主力版本。
+  - `requires-python` 保持 ADR-004 的最低支持 `>=3.11`；提升最低支持需要单独决策，不随主力版本自动提升。
+  - CI 至少验证两个锚点：3.11（最低支持）与 3.13（主力版本）；当前矩阵额外保留 3.12 作为中间版本补充。文档构建、RTD 与发布任务使用主力版本 3.13。
+  - 主力版本变更时同步更新 `pyproject.toml` classifiers、CI 矩阵、`uv.lock`、RTD 配置与相关文档，并新增 ADR 或修订本条记录。
+- **理由**：开发环境与操作系统稳定版一致，减少“本机可用、CI/部署不可用”的环境差异；同时保留 3.11 下限验证，避免为对齐开发机而丢弃仍受支持的发行版用户（如 Debian 12）。
+- **备选方案**：立即将 `requires-python` 提升到 `>=3.13`（会排除 Debian 12、Ubuntu 24.04 等用户，属破坏性变更）；仅验证主力版本 3.13（无法发现最低版本回归）；每发布新 Python 即升级主力（与 Debian stable 节奏脱节，依赖生态未必就绪）。
+- **风险**：Debian stable 升级时主力版本跳跃可能遇到依赖 wheel 缺失或行为变化，需要提前在 CI 增加新版本观察；若长期不升级，主力版本会落后于上游生态。回滚方式：恢复上一主力版本并同步 CI、RTD 与 classifier。
+- **关联文档**：[`release.md` 第 3.1 节](./release.md#31-运行环境与依赖兼容性矩阵)、[`testing.md` 第 11.3 节](./testing.md#113-测试工作流已落地)、[`README.md` 第 0.1 节](./README.md#01-准备环境python-311)、仓库 `AGENTS.md` 与 `docs/develop.rst`。
+
 ## 8. 失败边界与约束
 
 | 场景 | 当前行为 | 风险/注意 |
@@ -290,7 +317,9 @@ ADR-<序号>: <决策标题>
 
 非功能约束：
 
-- Python 3.10+；不支持更早版本。
+- Python 3.11+；不支持更早版本。该下限由 `WTForms>=3.3.2` 与 `SQLAlchemy>=2.1` 的上游要求决定，决策与回滚见第 7.2 节 ADR-004。
+- 开发与主力验证版本锚定 Debian stable 默认 Python（当前 Debian 13 → 3.13），仅随 Debian stable 升级而提升；3.11 持续作为最低支持验证版本，见 ADR-005。
+- 只支持 `pyproject.toml` 声明的单一依赖基线；不为范围外版本保留运行时兼容分支（`try/except ImportError` 导入回退、`hasattr`/`getattr` 回退、版本判断等）。测试不得用 `warnings.catch_warnings()` 局部屏蔽或升级 `DeprecationWarning`。
 - 单个 `SqlaDb` 实例只能同时绑定一个 app；多 app 并发需独立实例，顺序复用前先 `dispose()`。
 - SQLite 适合开发/测试；生产注意外键、大小写、并发差异。
 - 列表页通过 `joinedload`/`selectinload` 降低 N+1；计数正确性仍需修复。

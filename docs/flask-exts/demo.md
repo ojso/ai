@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-11 |
+> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用目录 | `flask-exts/examples/demo` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现及 View/Admin）、`requirements.md`（契约）、`testing.md`（测试）、`security.md`（安全） |
 >
@@ -46,7 +46,9 @@
 
 | 执行目录 | 命令 |
 | --- | --- |
-| `examples/demo` | `flask --app __init__ run` |
+| `examples/demo` | `uv run flask --app __init__ run` |
+
+`uv run` 使用仓库根目录 `uv sync` 创建的项目 `.venv`；依赖安装方式见 `testing.md` 第 0.1 节。
 
 端口、调试和 CLI 子命令沿用 `--app __init__`，见第 0.3、0.4 节。
 
@@ -75,13 +77,13 @@
 
 ```bash
 # 查看路由，确认应用可导入
-flask --app __init__ routes
+uv run flask --app __init__ routes
 
 # 指定端口
-flask --app __init__ run --port 5001
+uv run flask --app __init__ run --port 5001
 
 # 开启调试
-flask --app __init__ run --debug
+uv run flask --app __init__ run --debug
 ```
 
 
@@ -148,10 +150,10 @@ examples/
 
 ### 3.1 调用链
 
-以下以对外说明中的启动方式为例：在 `examples/demo` 目录执行 `flask --app __init__ run`。
+以下以对外说明中的启动方式为例：在 `examples/demo` 目录执行 `uv run flask --app __init__ run`。
 
 ```text
-flask --app __init__ run
+uv run flask --app __init__ run
         │
         ▼
 examples/demo/__init__.py  →  create_app()
@@ -405,7 +407,7 @@ demo 目前没有自定义 CLI。若新增，在 `make_app.py` 的 `init_app(app
 
 | 现象 | 原因 | 处理 |
 | --- | --- | --- |
-| `ModuleNotFoundError: flask_exts` | 没有安装项目 | `python -m pip install -e .` |
+| `ModuleNotFoundError: flask_exts` | 没有安装项目 | 在仓库根目录执行 `uv sync` |
 | `attempted relative import with no known parent package` | 在错误目录/用错误模块名启动 | 按第 0.2 节选择与执行目录匹配的启动模块名 |
 | `sqlite3.OperationalError: no such column: author.cdate` | `demo.sqlite` 是旧 schema，文件存在但模型已变 | 先按第 7.2 节确认触发条件；仅可丢弃的本地库按第 0.4 节重置 |
 | 访问 `/admin/author/` 403 | 未登录或用户没有 `admin` 角色 | 使用第 0.2 节的本地演示账号；确认其有 `admin` 角色。`/admin/` 门户可匿名访问 |
@@ -485,7 +487,7 @@ print("demo smoke ok")
 
 ### 12.1 代码风格
 
-- Python 3.10+；使用 `Mapped` / `mapped_column`。
+- Python 3.11+；使用 `Mapped` / `mapped_column`。
 - 双向关系用 `back_populates`，不用 `backref`。
 - 优先 f-string，避免 `.format()` / `%`。
 - 公共函数/方法加类型注解与简洁 Google 风格 docstring。

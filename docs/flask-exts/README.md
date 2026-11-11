@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-10（源码版本 `0.4.0`；HEAD `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-11 |
+> | 数据快照 | 2026-11-11（源码版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；发布标签 `v0.4.1`；工作树仅 `.vscode/settings.json` 本地改动） |
 > | 适用仓库 | `flask-exts` |
 > | 文档性质 | 治理与索引文档（独立存放，不参与项目构建） |
 
@@ -37,38 +37,41 @@
 
 新成员接入代码仓库（`flask-exts`）后，按以下三步拉起环境、启动示例与验证测试：
 
-### 0.1 准备环境（Python 3.10+）
+### 0.1 准备环境（Python 3.11+）
+
+项目使用 [uv](https://docs.astral.sh/uv/) 管理虚拟环境与依赖；未安装时先按官方说明安装 `uv`。
 
 ```bash
 # 在代码仓库根目录下执行
-python -m venv venv
-source venv/bin/activate       # Windows 环境: .\venv\Scripts\activate
-pip install -e .[test] coverage
+uv sync
 ```
+
+> `uv sync` 会自动创建项目内 `.venv` 并安装运行时依赖及 `dev` 依赖组；该组包含测试工具与文档构建依赖（`docs` 组）。需要激活时执行 `source .venv/bin/activate`（Windows: `.venv\Scripts\activate`）；未激活时给命令加 `uv run` 前缀即可，例如 `uv run flask --app __init__ run`。
 
 ### 0.2 运行演示应用（Demo）
 
 ```bash
 cd examples/demo
 
-# 初始化演示数据并启动（内置预置用户 admin/admin，仅限本地开发）
-python -c "import __init__; __init__.build_sample_db()"
-flask --app __init__ run
+uv run flask --app __init__ run
 # 浏览器访问后台: http://127.0.0.1:5000/admin/
 ```
 
+> 首次启动时若 `examples/demo/demo.sqlite` 不存在，应用会自动建库并写入示例数据（含本地账号 `admin/admin`）；已有数据库不会被重建。首次启动后修改模型或示例数据，需删除该文件再启动或手动重建。
+>
 > 详细目录结构、数据模型与已知问题见 [`demo.md`](./demo.md)。
 
 ### 0.3 运行全量测试套件与覆盖率自检
 
 ```bash
 # 回到代码仓库根目录
-pytest -q
-# 输出基线: 229 passed, 1 skipped (跳过未配真实 SMTP 的邮件发送测试)
+uv run pytest -q
 
-# 测量测试覆盖率（当前实测基线为 90% 行覆盖）
-coverage run -m pytest -q && coverage report
+# 测量测试覆盖率
+uv run coverage run -m pytest -q && uv run coverage report
 ```
+
+> 最近一次完整运行的通过/跳过数量、覆盖率数值、环境与快照日期统一见 [`testing.md` 第 1.1 节](./testing.md#11-当前规模)，本文不复制易过期的数字。
 
 > 测试分层规范、用例清单与回归门禁详见 [`testing.md`](./testing.md)。
 
@@ -141,22 +144,22 @@ release（发布门禁与回滚标准） ──引用──▶ 需求、测试�
 | 文档集 | 总览 + 多个扩展专题文档 + 索引 + `AGENTS.md` 已建立（共 10 篇核心文档） |
 | `spec.md` | 可用；承担项目总览及 View/Admin、插件、数据库专题说明 |
 | `architecture.md` | v0.1；系统上下文、模块依赖、生命周期、请求路径、状态所有权、关键决策与 ADR 规范 |
-| `testing.md` | **v0.1 工作稿**；测试目录与数量已按 HEAD 复核；`tests/e2e/`、`tests/performance/`、覆盖率基线及测试 CI 尚未落地 |
-| `demo.md` | v0.1；结构与示例数据已按 HEAD `171b409` 核对；对外启动方式与 demo 实测状态分开标注 |
-| `security.md` | v0.1；SEC-01/02/05/17/18 已按 HEAD 复核源码；部署相关风险与其余安全控制仍未全面核验 |
-| `requirements.md` | v0.1；49 条首批契约编号保持不变；少数实现观察已对照 HEAD，逐条 `REQ → TC → 测试入口` 与验证状态仍需审查 |
-| `release.md` | v0.1；源码版本与 HEAD 已核对；发布执行状态仍按证据标记 |
-| 项目代码 | 未因本轮文档工作修改 |
-| 文档构建 | 本文档集不在仓库 Sphinx `docs/` 内；仓库自身由 `.github/workflows/docs.yml` 构建，本机本轮因虚拟环境缺少 Sphinx 未能重建 |
+| `testing.md` | **v0.1 工作稿**；测试目录与数量已按 HEAD 复核；覆盖率基线已测定；`tests/e2e/`、`tests/performance/` 尚未落地；测试 CI 已落地（`.github/workflows/ci.yml`；GitHub 运行记录待核实） |
+| `demo.md` | v0.1；结构内容核对基线 `171b409`；对外启动方式与 demo 实测状态分开标注 |
+| `security.md` | v0.1；SEC-01/02/05/17/18 已按内容基线 `171b409` 复核源码；部署相关风险与其余安全控制仍未全面核验 |
+| `requirements.md` | v0.1；49 条首批契约编号保持不变；少数实现观察已对照内容基线 `171b409`，逐条 `REQ → TC → 测试入口` 与验证状态仍需审查 |
+| `release.md` | v0.1；发布版本 `0.4.1`（`0300602`）与标签 `v0.4.1` 已核对；PyPI 发布状态仍待核实 |
+| 项目代码 | 仓库已发布 `0.4.1`（`0300602`，tag `v0.4.1`）；本轮文档工作未修改代码 |
+| 文档构建 | 本文档集不在仓库 Sphinx `docs/` 内；仓库自身由 `.github/workflows/docs.yml` 构建。本机已用仓库 `.venv` 中的 Sphinx 重建并通过 `-W` 检查 |
 | 仓库位置 | 仅在任务确需访问代码仓库时确认根目录（见 `AGENTS.md` 第 4 节） |
-| 源码复核 | 已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 核对版本、测试/示例数据及选定架构、安全问题；运行环境与未逐项审查事实仍待核实 |
+| 源码复核 | 内容基线为 `171b40968f309c04ae3ad423696227c2767b0055`；已对照该基线核对版本、测试/示例数据及选定架构、安全问题。发布版本 `0.4.1`（`0300602`）的增量改动（uv/CI/`ChoiceField`）已复核；运行环境与未逐项审查事实仍待核实 |
 
 **已知的文档级限制：**
 
-- 当前数据基线为 HEAD `171b40968f309c04ae3ad423696227c2767b0055`（源码版本 `0.4.0`）；测试统计 46/193/916 已复算。未执行 demo，且部署配置、GitHub workflow 运行记录及 PyPI 实际发布状态未核实。
+- 当前发布版本为 `0.4.1`（HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`，tag `v0.4.1`），工作树仅 `.vscode/settings.json` 本地改动；内容核对基线为 `171b40968f309c04ae3ad423696227c2767b0055`。测试统计 47/210/950 基于 `03006024d21167c0f6285a5724a3be5ef24d9a59` 重新统计。仅验证 demo `routes` 导入，未完整启动 demo；部署配置、GitHub workflow 运行记录及 PyPI 实际发布状态未核实。
 - `requirements.md` 已建立 49 条首批契约，但用例与实际测试尚未逐条核对 `REQ-*`；编号引用本身不证明覆盖或执行通过。
 - 各契约“验收”字段与实际测试、断言及执行结果是否对应仍需逐条核实；关键契约索引只是导航，不能将索引或编号数量当作测试覆盖率。
-- `demo.md` 已与对外运行说明统一为 `examples/demo` 目录下的启动方式；本轮未实际运行 demo。
+- `demo.md` 已与对外运行说明统一为 `examples/demo` 目录下的启动方式；本轮仅验证 `routes` 导入，未完整启动 demo。
 - `demo.md` 的冒烟步骤是手工脚本，尚未进入 CI。
 - `security.md` 中标记为“风险/待决策”的 SEC-01～SEC-03 仍需代码或部署层处理。
 - `docs/api.rst` 已用 Sphinx `automodule` / `autoclass` 生成部分 API 参考；覆盖范围尚有限。
@@ -242,9 +245,8 @@ release（发布门禁与回滚标准） ──引用──▶ 需求、测试�
 | P0-1 | 契约与测试设计尚未逐条核对 | 测试仍可能只验证“代码现状” | 按 [`requirements.md`](./requirements.md) 各契约“验收”字段和 [`testing.md`](./testing.md) 第 6.2 节核对追溯 |
 | P0-2 | 实际测试入口和执行证据尚未逐条核实 | 无法判断实际覆盖和执行状态 | 按 [`testing.md`](./testing.md) 第 6.2 节核验契约、用例、测试入口与执行证据 |
 | P0-3 | Demo 无自动冒烟 | `demo.md` 与实际 demo 可能漂移 | 按 [`demo.md`](./demo.md) 第 11.3 节建立冒烟，并由 [`testing.md`](./testing.md) 第 11 节纳入 CI |
-| P0-4 | CI 未校验外部 Markdown 与 demo 启动 | 仓库 Sphinx 文档已有构建门禁，但外部 Markdown 文档集与 demo smoke 未纳入 | 按 [`testing.md`](./testing.md) 第 11 节补 Markdown 链接检查与 demo smoke；不重复配置现有 Sphinx 构建 |
-| P0-5 | 覆盖率基线已测定 | 当前行覆盖率为 90%（2026-11-10 实测） | 作为基准纳入日常监控，目标见 [`testing.md` 第 10.5/13 节](./testing.md#105-覆盖率基线记录) |
-| P0-6 | 高风险安全项未处理 | `security.md` 中高风险待决策项尚未关闭 | SEC-01/02/03/17 的详情与处置建议见 [`security.md` 第 11 节](./security.md#11-已知风险与待决策)，发布前按第 14 节检查 |
+| P0-4 | CI 未校验外部 Markdown 与 demo 启动 | 仓库已有 Sphinx 构建（`docs.yml`）与测试 CI（`ci.yml`），但本目录 Markdown 与 demo smoke 未纳入 | 按 [`testing.md`](./testing.md) 第 11 节补 Markdown 链接检查与 demo smoke；不重复配置现有 Sphinx 构建与 pytest 矩阵 |
+| P0-5 | 高风险安全项未处理 | `security.md` 中高风险待决策项尚未关闭 | SEC-01/02/03/17 的详情与处置建议见 [`security.md` 第 11 节](./security.md#11-已知风险与待决策)，发布前按第 14 节检查 |
 
 ### P1：公开发布前
 
@@ -252,7 +254,7 @@ release（发布门禁与回滚标准） ──引用──▶ 需求、测试�
 | --- | --- | --- | --- |
 | P1-1 | 自动生成的 API 参考覆盖有限 | `docs/api.rst` 仅列出部分 Admin/View/Forms API | 扩展 `automodule` / `autoclass` / `autosummary` 的覆盖范围 |
 | P1-2 | 发布执行结果未记录 | Workflow 配置不能证明 tag 构建或 PyPI 发布成功 | 每次发布记录 tag、Actions 与 PyPI 结果；发布规则见 `release.md` |
-| P1-3 | 兼容矩阵不完整 | `pyproject.toml` 声明 Python `>=3.10` 及依赖下限，但未记录已测试的版本组合 | 补充经验证的 Python/Flask/SQLAlchemy/数据库/浏览器矩阵 |
+| P1-3 | 兼容矩阵不完整 | `pyproject.toml` 声明 Python `>=3.11` 及依赖下限，但仅记录单一环境，未覆盖完整版本组合 | 补充经验证的 Python/Flask/SQLAlchemy/数据库/浏览器矩阵 |
 | P1-4 | 安全运营未落地 | 安全运营实施状态待补 | 按 [`security.md` 第 13 节](./security.md#13-安全运营与响应)补齐流程与响应安排 |
 | P1-5 | 部署/运维文档缺失 | 生产配置、备份、日志、反向代理与迁移指引不足 | 补充部署与运维指南 |
 | P1-6 | 性能基线缺失 | 缺少 p50/p95 与查询数量的实测基线 | 按 `testing.md` 9.7 记录 p50/p95/查询数 |
