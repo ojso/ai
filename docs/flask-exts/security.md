@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-10 |
-> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-12 |
+> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`main` 已包含 SEC-01/SEC-05/SEC-18/SEC-19 修复，待发布） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`demo.md`（示例）；View/Admin 见 `spec.md` 第 10 章 |
 >
@@ -63,11 +63,11 @@
 
 | 风险项 | 缺陷根因 | 临时阻断要求（运维/管理） |
 | --- | --- | --- |
-| **SEC-01**（禁用 admin 仍有效） | `SimpleAuthorizer` 优先放行 admin 角色，绕过了 `is_active` 校验 | **禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时在数据库或管理后台移除其 `admin` 角色，或直接删除账号。 |
+| **SEC-01**（禁用 admin 仍有效） | 修复已进入 `main`（v0.4.1 之后），待发布；已发布的 0.4.1 及更早版本仍优先放行 `admin` 角色 | 对 0.4.1 及更早的部署：**禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时移除其 `admin` 角色，或直接删除账号。 |
 | **SEC-02**（JWT 绕过 TFA） | `load_user_from_request` 仅检查 `is_active`，未验证 TFA 完成标记 | 对开启双因素认证的高权限账号，**切勿为其发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。 |
 | **SEC-03**（认证端点无限流） | 登录、注册、TFA 校验、找回密码端点无内置防爆破与锁定机制 | **反向代理硬性限流**：Nginx / Envoy / WAF 必须对 `/user/login/`、`/user/verify_tfa/`、`/user/reset_password/` 开启基于来源 IP 或用户名的频次限制（如单 IP 每分钟 ≤5 次）。 |
-| **SEC-18**（未配置 sender 泄露令牌） | 发送器缺失时完整载荷被打入 warning 日志，包含敏感链接 | 生产环境务必在启动阶段显式提供有效的 `NOREPLY_EMAIL_SENDER`，防止退化到该记录分支；生产日志输出需配置过滤。 |
-| **SEC-19 / V-01**（内联编辑绕过只读开关） | `ajax_update` 仅检查可编辑列，未检查 `can_edit` | 若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。 |
+| **SEC-18**（未配置 sender 泄露令牌）（已修复，待发布） | `main` 中的 `send_email` 只记录 sender 类型与脱敏收件人，不再输出 `data` | 已发布 0.4.1 及更早版本仍会把完整载荷写入 warning；这些版本的日志需限制访问并过滤验证/重置链接。 |
+| **SEC-19 / V-01**（内联编辑绕过只读开关） | 修复已进入 `main`（v0.4.1 之后），待发布；已发布 0.4.1 及更早版本仅检查 `column_editable_list` | 对 0.4.1 及更早的部署：若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。 |
 
 ## 1. 范围与威胁模型
 
@@ -114,7 +114,7 @@
 | 匿名访问者 | 访问公开页面、登录/注册/找回 | 不可信 |
 | 普通用户 | 登录、管理自己的资料 | 已通过密码认证 |
 | Admin | 访问 Admin 模型视图、批量操作、导出 | 高权限，必须重点保护 |
-| 被禁用用户 | 仍有有效 session 的可能 | 不应访问账户功能 |
+| 被禁用用户 | 旧 session 在下一次请求即失效（`user_loader` 返回 `None` 并清理 session） | 不应访问任何登录保护页 |
 | 数据库读取者 | 读取表数据 | 不应能直接伪造 TOTP/密码 |
 | 网络攻击者 | 窃听、篡改、重放 | HTTPS 应阻止 |
 | 邮件拦截者 | 获取令牌链接 | 令牌必须有 TTL 且可失效 |
@@ -164,7 +164,7 @@ SecurityExtension
 
 LoginExtension
   └─ Flask-Login LoginManager
-       ├─ user_loader               (session: id + password fingerprint)
+       ├─ user_loader               (session: id + fingerprint + is_active)
        └─ request_loader            (Bearer JWT)
 
 UserCenterExtension
@@ -225,9 +225,11 @@ POST /user/login/
   │    ├─ 用户存在但无密码 → dummy 校验 → InvalidCredentialsError
   │    ├─ 密码错误 → check_password_hash → InvalidCredentialsError
   │    └─ 成功 → user
-  ├─ safe_redirect_target(next, fallback)
+  ├─ user.is_active?
+  │    ├─ 否 → 提示账号已禁用，不建立会话
+  │    └─ 是 → safe_redirect_target(next, fallback)
   ├─ user.tfa_enabled?
-  │    ├─ 否 → login_user(user, force=True) → 重定向
+  │    ├─ 否 → login_user(user) → 重定向
   │    └─ 是 → session[pending_tfa_user_id] = user.id
   │             → 重定向 /user/verify_tfa/
   └─ 失败 → 统一提示 "Invalid username or password."
@@ -237,7 +239,7 @@ POST /user/login/
 
 - **统一错误**：登录失败不区分“用户不存在/密码错误”，降低枚举。
 - **dummy hash**：用户不存在时也执行一次 scrypt 校验，降低时间侧信道。
-- **`force=True`**：Flask-Login 的 `is_active` 检查被绕过，由 `SimpleAuthorizer` 统一判断（见 4.3 的风险）。
+- **`is_active` 由 Flask-Login 原生检查**：登录不传 `force`；禁用账号无法建立会话。`is_active` 只表示管理禁用，与邮箱验证无关。
 - **TFA 前不建立会话**：密码正确但 TFA 未完成时，只写入 pending user id，不调用 `login_user`。
 - **安全重定向**：`next` 参数经过 `safe_redirect_target`（见 7.5）。
 
@@ -250,11 +252,17 @@ password_fingerprint = current_security.hasher.hash(self.password or "")
 return f"{self.id}:{password_fingerprint}"
 ```
 
-`user_loader` 解析 `id:fingerprint`，并重新校验密码哈希：
+`user_loader` 解析 `id:fingerprint`，先拒绝禁用账号，再重新校验密码哈希：
 
 ```python
 raw_id, password_fingerprint = user_id.rsplit(":", 1)
 user = current_userstore.user_loader(int(raw_id))
+if user is None:
+    return None
+if not user.is_active:
+    session.pop("_user_id", None)
+    session["_remember"] = "clear"
+    return None
 if not current_security.hasher.verify(user.password or "", password_fingerprint):
     return None
 ```
@@ -262,8 +270,9 @@ if not current_security.hasher.verify(user.password or "", password_fingerprint)
 效果：
 
 - 修改密码后，旧 session 的 fingerprint 不匹配 → 会话失效。
+- `is_active=False` 后，下一次请求即按匿名处理，并清除 `_user_id` 与 remember-me Cookie；重新启用账号不会恢复旧 Cookie。
 - 改邮箱不会使 session 失效（session 只绑定密码）。
-- 该机制只保护 **session**，不保护 JWT（见 9.3）。
+- 该机制只保护 **session**，不保护 JWT（JWT 路径在 `load_user_from_request` 单独检查 `is_active`，见 9.3）。
 
 ### 3.3 会话 Cookie 建议
 
@@ -305,8 +314,9 @@ app.config.update(
 ### 3.5 账号激活与邮箱验证
 
 - `User._is_active` 默认 `True`；新注册用户**默认激活**。
-- `email_verified` 与 `is_active` **独立**：未验证邮箱不会阻止登录。
+- `is_active` 是**管理禁用标记**，`email_verified` 是邮箱验证状态，两者独立：未验证邮箱不会阻止登录。
 - 未验证用户仍可登录、查看资料、修改密码；但 `ResetPassword` 要求 `email_verified=True`。
+- `is_active=False` 的账号登录时被拒绝，不会建立新会话；若禁用发生在 TFA 过程中，pending 状态会被清理。既有会话在下一次请求时由 `user_loader` 判定为匿名，并清除 `_user_id` 与 remember-me Cookie；重新启用账号后仍需重新登录。
 - `status`、`expired_at` 字段存在，但当前未见业务逻辑使用。
 
 ## 4. 授权
@@ -329,31 +339,25 @@ View 方法
 ```python
 def allow(self, *args, **kwargs):
     user = kwargs.get("user")
-
-    # 1. admin 角色：直接放行
-    if hasattr(user, "get_roles") and "admin" in user.get_roles():
-        return True
-
     view = kwargs.get("view")
-    fn = kwargs.get("fn")
 
-    # 2. requires_active + 非激活 → 拒绝
-    if getattr(fn, "_requires_active", False) and not getattr(user, "is_active", True):
-        return False
-
-    # 3. allow_access 公开视图 → 放行
+    # 1. allow_access 公开视图 → 放行
     if view is not None and getattr(view, "allow_access", False):
         return True
 
-    # 4. 非激活 → 拒绝
+    # 2. 非激活 → 拒绝（管理员角色也不例外）
     if not getattr(user, "is_active", True):
         return False
 
-    # 5. role_need 匹配 → 放行
+    # 3. admin 角色 → 放行
+    if hasattr(user, "get_roles") and "admin" in user.get_roles():
+        return True
+
+    # 4. role_need 匹配 → 放行
     if "role_need" in kwargs and hasattr(user, "get_roles") and kwargs["role_need"] in user.get_roles():
         return True
 
-    # 6. super_admin → 放行
+    # 5. super_admin → 放行
     return bool(hasattr(user, "get_roles") and "super_admin" in user.get_roles())
 ```
 
@@ -367,31 +371,25 @@ def allow(self, *args, **kwargs):
 | 普通用户 + 无角色 | 拒绝 | 默认拒绝 |
 | 普通用户 + `role_need` 匹配 | 放行 | 需 active |
 | `super_admin` + active | 放行 | active 检查在最后一步之前 |
-| `super_admin` + inactive | 拒绝 | 会先被第 4 步拦截 |
-| **`admin` + inactive** | **放行** | 第 1 步短路，绕过 active 与 `requires_active` |
-| **`admin` + `@requires_active` + inactive** | **放行** | 同上 |
-| `admin` + 任意视图 | 放行 | 高权限，需重点保护 |
+| `super_admin` + inactive | 拒绝 | 会先被 active 检查拦截 |
+| **`admin` + inactive** | **拒绝** | 先检查 `is_active`，再判断 `admin` |
+| `admin` + 任意视图（active） | 放行 | 高权限，需重点保护 |
 
-**风险 SEC-01（高）**：`admin` 角色在 `is_active` 检查之前短路。因此把管理员 `is_active=False` **不会**撤销其 Admin/账户功能访问；被“禁用”的 admin 仍可继续操作。`super_admin` 反而会被 active 检查拦截，行为不一致。
+**SEC-01（高，已修复待发布）**：`main` 已把 `is_active` 检查移到 `admin` 角色判断之前；`is_active=False` 的管理员访问 Admin 返回 403，公开 `allow_access` 视图行为不变。回归测试见 `tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`。
 
-建议：
+对已发布的 0.4.1 及更早版本，仍需按第 0.3 节执行临时阻断：禁用管理员时**同时移除 admin 角色**或删除账号。
 
-- 将 `admin` 检查移到 `is_active` 之后，或对 `admin` 也执行 `requires_active`。
-- 若短期内不改代码，禁用管理员时必须**同时移除 admin 角色**或删除账号。
-- 不要把 `admin` 角色当作普通业务角色使用。
+### 4.4 公开视图与禁用账号
 
-### 4.4 `requires_active` 与公开视图
-
-`UserView.allow_access = True` 让登录/注册等公开端点可匿名访问；账户功能单独加 `@requires_active`：
+`UserView.allow_access = True` 让登录/注册等公开端点可匿名访问；账号功能使用 `@login_required`：
 
 ```python
 @login_required
-@requires_active
 @expose_url("/change_password/", methods=("GET", "POST"))
 def change_password(self): ...
 ```
 
-例外：`profile` 只有 `@login_required`，没有 `@requires_active`，因为被禁用账号需要通过资料页重发验证邮件；其链接的账户功能各自加 `@requires_active`。
+`is_active=False` 的账号无法登录（`REQ-AUTH-009`），既有会话在下一次请求由 `user_loader` 失效（`REQ-AUTH-010`），因此授权器不会收到已认证的禁用用户。未验证邮箱（`email_verified=False`）的账号本身是 active，可登录并使用资料页重发验证邮件。
 
 ### 4.5 Admin 视图
 
@@ -556,7 +554,7 @@ return self.app.config.get(f"{serializer_name.upper()}_MAX_AGE", default_max_age
 - **源码未显式传入 SSL context**：`SmtpSSL` 构造 `smtplib.SMTP_SSL` 时没有提供 context；不同受支持 Python 版本的默认证书/主机名校验行为未在本轮核验。显式使用 `ssl.create_default_context()` 并增加验证测试前，应按 SEC-17 保持风险状态。
 - 使用 `NOREPLY_EMAIL_SENDER` 中的 `host/port/user/password`。
 - 不要在代码/仓库中硬编码 SMTP 凭据。
-- 当前 `send_email` 找不到 sender 时会把完整 `data` 写入 warning 日志，可能包含验证/重置链接和令牌（SEC-18）；应只记录 `type`/收件人并脱敏。
+- `send_email` 找不到 sender 时只记录 sender 类型与脱敏收件人（如 `a***@example.com`），不记录链接或令牌（SEC-18 已修复，待发布）。
 - 建议：显式传入 `ssl.create_default_context()`，启用证书与主机名校验；使用专用发信账号、最小权限、密钥轮换、发送量监控。
 
 ## 7. CSRF 与浏览器安全
@@ -755,6 +753,7 @@ if "Authorization" in request.headers:
 安全点：
 
 - 只接受 `Bearer`，拒绝 Basic。
+- 不读取 `api_key` 查询参数或其他请求参数；认证只来自 `Authorization` 头。
 - 只接受 `token_use="access"`。
 - 检查 `is_active`。
 
@@ -869,15 +868,15 @@ server {
 
 ## 11. 已知风险与待决策
 
-> 本轮已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核实 SEC-01/02/05/17/18/19 的代码观察；其余风险按各条现有证据边界标记。等级基于“公网 + 默认配置”假设，实际影响取决于部署；这不是完整安全审计或渗透测试。
+> 本轮已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核实 SEC-01/02/05/17/18/19 的代码观察；其中 SEC-01、SEC-05、SEC-18 与 SEC-19 已在 `main` 修复（v0.4.1 之后，待发布）；其余风险按各条现有证据边界标记。等级基于“公网 + 默认配置”假设，实际影响取决于部署；这不是完整安全审计或渗透测试。
 
 | ID | 等级 | 位置 | 现状 | 建议 |
 | --- | --- | --- | --- | --- |
-| SEC-01 | 高 | `security/authorizer/simple_authorizer.py` | `admin` 角色在 `is_active` 检查前短路；禁用 admin 仍可访问 Admin/账户功能 | 调整判定顺序，或禁用时同时移除 admin 角色 |
+| SEC-01 | 高（已修复，待发布） | `security/authorizer/simple_authorizer.py` | `is_active` 检查已移到 `admin` 角色判断之前；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` 覆盖 | 已发布 0.4.1 及更早版本的部署仍需同时移除 admin 角色 |
 | SEC-02 | 高（启用 JWT） | `builtin_extensions/login_ext.py::load_user_from_request` | JWT 只检查 `is_active`，不检查 TFA | 在 JWT 中携带 `amr`/`tfa` 声明并校验，或返回前强制 TFA |
 | SEC-03 | 高（公网） | 登录/注册/找回/TFA/恢复码 | 无限流、无锁定、无验证码 | 反向代理/WAF 限流，或业务层加失败计数/延迟 |
 | SEC-04 | 中 | `flask-exts/docs/configure.rst` vs 代码 | `TFA_EXEMPT_ENDPOINTS` 有文档但未实现 | 实现该配置，或从文档移除并说明 |
-| SEC-05 | 中 | `usercenter/forms/register.py` | 注册邮箱只有 `DataRequired()`，无 `Email()` | 补 `Email()`/长度校验 |
+| SEC-05 | 中（已修复） | `usercenter/forms/register.py` | 注册邮箱已使用 `DataRequired()` + `Email()` + `Length(max=254)`；`test_register_rejects_invalid_email` 覆盖非法格式且不创建用户 | 保持 `Email()` 与改邮箱表单一致；投递性检查默认关闭 |
 | SEC-06 | 中 | 密码策略/表单 | 快照未见常见或泄露密码阻断；服务端 API 可绕过表单长度限制（当前未复核） | 按适用标准评估阻断要求并统一校验；不默认要求字符组合 |
 | SEC-07 | 中 | `security/keys.py` + `encryptor` | 轮换 `SECRET_KEY` 会使 TOTP secret 无法解密 | 提供重加密迁移或提前重绑 |
 | SEC-08 | 中 | `login_ext.py` | JWT 不随密码变更失效 | 加入 `token_version` 或缩短 TTL |
@@ -890,8 +889,8 @@ server {
 | SEC-15 | 信息 | Admin 视图 | 匿名访问模型视图返回 403，不是登录重定向 | 需要跳转登录时加 `@login_required` |
 | SEC-16 | 中 | `usercenter/user_view.py::enable_tfa` | 关闭 TFA 只清 `totp_secret`，不清 `recovery_codes`；重新启用后旧恢复码仍可能有效 | 禁用/重绑时清空恢复码并强制重新生成 |
 | SEC-17 | 中-高 | `emailer/smtp.py::SmtpSSL` | HEAD 中未显式传入 SSL context；默认证书/主机名校验行为依赖 Python 版本，未在本轮核验 | 显式传入 `ssl.create_default_context()`，并补跨支持版本测试 |
-| SEC-18 | 中 | `emailer/base.py::send_email` | 找不到 sender 时把完整 `data` 写入 warning 日志，可能包含验证/重置链接和令牌 | 只记录 `type`/收件人，令牌与链接脱敏 |
-| SEC-19（V-01 别名） | 中 | 见 `spec.md` 的 V-01 | 内联编辑可能绕过视图级编辑开关 | 详情与修复建议见 [`spec.md` 第 10.16 节](./spec.md#1016-已知问题与回归) |
+| SEC-18 | 中（已修复，待发布） | `emailer/base.py::send_email` | 找不到 sender 时只记录 `type` 与脱敏收件人，不输出链接/令牌；`test_missing_sender_warning_redacts_payload` 覆盖 | 已发布版本仍需限制日志访问并过滤敏感载荷 |
+| SEC-19（V-01 别名） | 中（已修复，待发布） | `admin/model/view.py::ajax_update` | `can_edit=False` 时返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需将 `column_editable_list` 置空 |
 
 ## 12. 测试覆盖与缺口
 

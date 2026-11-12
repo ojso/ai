@@ -4,8 +4,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-11 |
-> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-12 |
+> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；v0.4.1 之后的 `main` 已包含 C2 计数语义、C5/C6、C7、V-01、V-02、C11、AUTH-009/AUTH-010、`requires_active` 移除、SEC-18 日志脱敏） |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
 
 ## 目录
@@ -311,11 +311,11 @@ Admin
 | `FilterHandler` | 解析、应用、生成筛选参数 |
 | `FormHandler` | 创建/编辑/删除/列表表单 |
 | `RowActionHandler` | 单行操作按钮（查看/编辑/删除/链接） |
-| `RowsActionHandler` | 选中多行的批量操作（`@expose_action`） |
+| `BulkActionHandler` | 选中多行的批量操作（`@expose_action`） |
 | `ExportHandler` | CSV/tablib 导出 |
 | `ValueHandler` | 列表/详情/导出的值格式化 |
 
-> **命名注意**：`RowActionHandler`（单数 Row）负责“单行按钮”，`RowsActionHandler`（Rows）负责“批量操作”。两者只差一个 `s`，文件名也只差 `s` 的位置（`rowactions.py` / `rowsaction.py`），非常容易混淆；建议重构时改名为 `RowActionHandler` / `BulkActionHandler`，见第 10.16 节 V-02。
+> **命名说明**：`RowActionHandler` 负责“单行按钮”，`BulkActionHandler` 负责“批量操作”；文件分别为 `row_actions.py` / `bulk_actions.py`，见第 10.16 节 V-02。
 
 `ModelView` 通过显式转发方法暴露 Handler 能力（如 `get_list_args()`、`get_list_url()`），转发方法本身不在此复制。
 
@@ -375,7 +375,6 @@ View(
 
 ```python
 @login_required
-@requires_active
 @expose_url("/", methods=("GET",))
 def index(self): ...
 ```
@@ -384,19 +383,17 @@ def index(self): ...
 | --- | --- |
 | `expose_url(url, methods=("GET",))` | 登记 URL 与允许方法 |
 | `login_required` | Flask-Login 包装，并标记 `_login_required` |
-| `requires_active` | 标记需要激活账号（`is_active=True`） |
 | `expose_action(name, text, confirmation=None)` | 登记批量/行操作 |
 
 **装饰器顺序**（自上而下）：
 
 ```python
 @login_required
-@requires_active
 @expose_url("/settings/", methods=("GET", "POST"))
 def settings(self): ...
 ```
 
-`login_required` 先处理匿名用户（重定向登录），`requires_active` 再由授权器检查 active。
+`login_required` 先处理匿名用户（重定向登录）；禁用账号在登录或会话加载阶段已被拒绝，不会进入授权器。
 
 #### 10.3.3 ViewMeta 与访问控制
 
@@ -412,7 +409,7 @@ def settings(self): ...
 
 - 让整个视图可匿名访问（如登录/注册/门户）。
 - 绕过授权器的 `is_active` 检查。
-- 账号级功能仍需 `@requires_active` 单独保护。
+- 禁用账号无法通过登录或 `user_loader` 获得已认证身份，因此公开视图不会因此暴露账号功能。
 
 > 授权细节与已知风险（如 inactive admin 绕过）见 [`security.md`](./security.md) 第 4 章。
 
@@ -674,7 +671,7 @@ def delete_model(self, model): ...
 
 | 问题 | 说明 |
 | --- | --- |
-| C2 计数偏大 | `build_count()` 应用 JOIN 但未去重；一对多搜索/筛选时 `count` 大于根记录数 |
+| C2 计数与列表行数（已关闭） | `build_count()` 按 JOIN 后实际行数计数，与列表查询返回行数一致；一对多重复行同时出现在列表与计数中 |
 | 复合主键 | 使用逗号编码；主键值本身含逗号时会歧义 |
 | 自动 JOIN | 只根据 `column_list` 的根关系推断；复杂路径可能需要手动配置 |
 
@@ -778,6 +775,7 @@ class FilterNameBrown(BaseSQLAFilter):
 
 - 列表页通过 `/ajax/update/` 保存。
 - 需要字段可编辑、表单可生成、CSRF 正确。
+- `can_edit=False` 时 `ajax_update` 在读取请求体前返回 403；`column_editable_list` 为空时返回 404。
 
 ### 10.8 表单生成
 
@@ -999,11 +997,11 @@ ViewArgs(
 
 `get_safe_page_size`：仅当 `can_set_page_size` 为真且请求值在 `page_size_options` 白名单内时采用，否则回退到 `page_size`。
 
-#### 10.12.3 已知问题 C5/C6
+#### 10.12.3 已知问题 C5/C6（已修复）
 
-- `hasattr(self, "get_url")` 在 `PaginationHandler` 上永远为假，因为 `get_url` 在 `View` 上；这是死分支（C5）。
-- 手写查询字符串没有 URL 编码；搜索词含 `&`、`#`、空格、中文时可能出错（C6）。
-- 建议改用 `url_for` + `urlencode`，并补 TC-ADMIN-032 测试。
+- C5：原 `hasattr(self, "get_url")` 死分支已移除，`get_list_url` 直接调用 `self.view.get_url(".index_view")`。
+- C6：查询参数改用 `urllib.parse.urlencode(params, doseq=True)` 编码；空格、`&`、`#`、非 ASCII 字符可正确回放。
+- 回归测试：`tests/unit/admin/model/test_pagination.py`、`tests/integration/admin/sqla/test_search.py::test_search_url_encodes_special_characters`。
 
 ### 10.13 CRUD 与请求流程
 
@@ -1155,14 +1153,14 @@ admin.register_view(jsonview)
 | ID | 严重度 | 位置 | 问题 | 建议 |
 | --- | --- | --- | --- | --- |
 | C1 | 高 | `admin/sqla/inline/inline_model_convert.py::process_ajax_refs` | 调用 `create_ajax_loader` 传 5 个参数，签名是 `(name, options)` | 统一签名或直接构造 loader |
-| C2 | 中 | `datastore/sqla/query.py::build_count` | JOIN 未去重，一对多搜索/筛选计数偏大 | `count(distinct(pk))` 或子查询 |
-| C5 | 低 | `admin/model/handlers/pagination.py::get_list_url` | `hasattr(self, "get_url")` 永远为假 | 改用 `url_for` |
-| C6 | 低 | 同上 | 手写查询字符串未 URL 编码 | `urlencode` |
-| C7 | 低 | `datastore/sqla/query_builders/` | 运行时未使用，和 `Query` 形成两套抽象 | 删除或合并 |
+| C2 | 中（已关闭） | `datastore/sqla/query.py::build_count` | 计数按列表查询实际行数，与 JOIN 结果一致；原“虚高”判断不成立 | 保持 `count` 与列表行数一致 |
+| C5 | 低（已修复） | `admin/model/handlers/pagination.py::get_list_url` | 死分支已移除 | 调用 `view.get_url(".index_view")`；补回归测试 |
+| C6 | 低（已修复） | 同上 | 查询参数已用 `urlencode` 编码 | 保持 TC-ADMIN-032 回归 |
+| C7 | 低（已删除） | `datastore/sqla/query_builders/` | 运行时未使用，和 `Query` 形成两套抽象 | 已移除整个包 |
 | C10 | 低 | 扩展管理器的晚注册路径 / `AdminExtension.post_init` | 新扩展会执行自身初始化，但不会重跑 Admin 的视图扫描；晚注册扩展提供的 `AdminViewMixin` 不会自动被收集 | 文档化或提供显式刷新机制 |
-| C11 | 中 | `extension_core/registry.py::ExtensionRegistry.shutdown_all` | 关闭时只捕获 `ExtensionError`，其他异常会中断逆序关闭，与 `REQ-EXT-004` 的单扩展异常隔离契约冲突 | 逐扩展隔离普通异常并记录 warning，补测试；详见第 11.4.3 节 |
-| V-01 | 中 | `admin/model/view.py::ajax_update` | 只检查 `column_editable_list`，未检查 `can_edit` | 内联编辑可能绕过视图级编辑开关；补 `can_edit` 检查与测试 |
-| V-02 | 低 | `admin/model/handlers/rowactions.py` / `rowsaction.py` | `RowActionHandler`（单行）与 `RowsActionHandler`（批量）命名只差一个 `s`，文件名也近似 | 重命名为 `RowActionHandler` / `BulkActionHandler`，文件 `row_actions.py` / `bulk_actions.py` |
+| C11 | 中（已修复） | `extension_core/registry.py::ExtensionRegistry.shutdown_all` | 逐扩展捕获普通 `Exception`、记录 warning 并继续逆序关闭；`BaseException` 不被吞掉 | 保持异常隔离与状态清理测试 |
+| V-01 | 中（已修复，待发布） | `admin/model/view.py::ajax_update` | `can_edit=False` 时在读取请求体前返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需用 `column_editable_list=()` 作为临时阻断 |
+| V-02 | 低（已修复） | `admin/model/handlers/row_actions.py` / `bulk_actions.py` | 已重命名为 `RowActionHandler` / `BulkActionHandler`，方法改为 `get_bulk_actions()` / `get_bulk_action()` | 保持新命名 |
 
 其他注意：
 
@@ -1195,52 +1193,34 @@ def create_ajax_loader(self, name, options):
 
 **建议：** 统一签名。要么让 `create_ajax_loader` 接受 `(model, session, name, field_name, options)`，要么在 Inline 里先构造 `AjaxSqlaModelLoader` 并直接赋值。修复后补测试 `tests/integration/admin/sqla/test_inline_ajax.py`。
 
-##### C2：`build_count` 一对多重复计数
+##### C2：`build_count` 一对多计数（已关闭）
+
+列表查询在关联 JOIN 下会返回重复根对象；分页总数必须与列表实际返回的行数一致。因此 `build_count()` 保持：
 
 ```python
-def build_count(self):
-    stmt = select(func.count()).select_from(self.root_model)
-    stmt = self._apply(stmt)
-    return stmt
+stmt = select(func.count()).select_from(self.root_model)
+stmt = self._apply(stmt)
+return stmt
 ```
 
-`_apply` 会应用 `_joins`。搜索/筛选涉及一对多关系时，JOIN 后父记录出现多行，`count` 统计的是 JOIN 后的行数。
+即使用与列表查询相同的 JOIN、搜索与筛选条件，不做根主键去重。
 
-**复现：**
+回归测试：`tests/integration/admin/sqla/test_search.py::test_related_search_count_matches_list_rows`
+（1 个 Author + 5 条匹配子记录 → `count == 5`，列表返回 5 行）；复合主键模型计数仍由
+`tests/integration/admin/sqla/test_primary_keys.py::test_composite_primary_key` 覆盖。
 
-```python
-# Parent 有多个 Child；搜索 Child.name
-query = Query(Parent)
-query.add_search_term("match", ["children.name"])
-count = session.scalar(query.build_count())
-# 期望 len(parents)，实际可能是匹配 child 的数量
-```
+> 该语义下同一根对象可能在列表中出现多次。如后续改为“一行一个根记录”，必须同时调整列表查询、计数与分页，并更新 REQ-ADMIN-005。
 
-**建议：**
+##### C5 / C6：`get_list_url`（已修复）
 
-- 对根模型主键做 `count(distinct(pk))`
-- 或用子查询：先 `select(distinct(root.pk))` 再 `count(*)`
-- 复合主键用 `tuple_` 去重
-- 增加一对多搜索的计数测试
+死分支已删除；`get_list_url` 通过 `self.view.get_url(".index_view")` 生成基础 URL，并使用 `urlencode(params, doseq=True)` 编码查询参数。
 
-##### C5 / C6：`get_list_url`
+回归测试覆盖空格、`&`、非 ASCII、`sort=0`、额外参数与筛选参数：
+`tests/unit/admin/model/test_pagination.py`、`tests/integration/admin/sqla/test_search.py`。
 
-`PaginationHandler` 没有 `get_url`，所以分支永远走 `else`。同时手写查询字符串没有编码。
+##### C7：未使用的 query builders（已删除）
 
-**建议：**
-
-- 删除死分支，或在 Handler 中显式持有 view 并调用 `self.view.get_url(".index_view", **kwargs)`
-- 使用 `urllib.parse.urlencode` 生成查询字符串
-- 补测试：搜索词含空格/`&`/中文时 URL 正确
-
-##### C7：未使用的 query builders
-
-`FilterBuilder`、`JoinBuilder`、`SortBuilder`、`PaginationBuilder` 没有被 `SqlaBackend` 使用。
-
-**建议：** 二选一：
-
-- 接入 `Query`，让 builder 成为唯一查询构造方式
-- 删除，减少误导
+`FilterBuilder`、`JoinBuilder`、`SortBuilder`、`PaginationBuilder` 未被 `SqlaBackend` 或 `Query` 使用，已随 `datastore/sqla/query_builders/` 整体删除，保留 `query.py::Query` 作为唯一查询构造路径。
 
 ##### C10：晚注册扩展
 
@@ -1251,29 +1231,18 @@ count = session.scalar(query.build_count())
 - 如果确实需要动态注册，提供显式的 `admin.rescan_views()` 或事件
 - 或在 `register_extension` 中对新扩展触发相关扩展的 `post_init`（需要设计幂等与重复注册保护）
 
-##### V-02：RowAction 与 RowsAction 命名混淆
+##### V-02：RowAction 与 BulkAction 命名（已修复）
 
-当前有两套很相似但职责不同的处理器：
+两套处理器现已使用明确命名：
 
 | 文件 | 类 | 职责 | 主要方法 |
 | --- | --- | --- | --- |
-| `handlers/rowactions.py` | `RowActionHandler` | 单行按钮：查看/编辑/删除/链接 | `get_row_actions()` |
-| `handlers/rowsaction.py` | `RowsActionHandler` | 选中多行的批量操作 | `get_list_actions()`、`get_rows_action()`、`action_form()` |
+| `handlers/row_actions.py` | `RowActionHandler` | 单行按钮：查看/编辑/删除/链接 | `get_row_actions()` |
+| `handlers/bulk_actions.py` | `BulkActionHandler` | 选中多行的批量操作 | `get_bulk_actions()`、`get_bulk_action()`、`action_form()` |
 
-`ModelView` 中的属性也只差一个字母：`_rowactions_handler`（单行）与 `_rowsaction_handler`（批量）。
+`ModelView` 对应属性为 `_row_actions_handler` 与 `_bulk_actions_handler`，转发方法为 `get_row_actions()`、`get_bulk_actions()`、`get_bulk_action()`；模板 `admin/model/list.html` 使用 `view.get_bulk_actions()`。
 
-`RowsAction` 的命名既不是 `RowActions`，也不是 `BulkActions`，容易让人误以为是“多个单行操作”。建议重构为：
-
-```text
-RowActionHandler   → 保持（单行）
-RowsActionHandler  → BulkActionHandler
-get_rows_action    → get_bulk_action
-get_list_actions   → get_bulk_actions
-rowsaction.py      → bulk_actions.py
-rowactions.py      → row_actions.py（可选）
-```
-
-如果 `RowsActionHandler` 是公开 API，先加别名/弃用说明，再在下一个主版本移除旧名。该重构不影响数据库或行为，但需要同步模板 `admin/model/list.html` 中的 `view.get_list_actions()` 与 `view.get_row_actions()`。
+该重命名为破坏性 API 变更，旧名未保留别名。
 
 <a id="1017-测试映射"></a>
 
@@ -1382,13 +1351,13 @@ list_template / create_template / edit_template / details_template
 #### 11.4.3 关闭阶段
 
 - `shutdown()` 应按逆序释放资源。
-- 单个扩展失败不应阻止其他资源清理。当前源码的 Registry 关闭路径只捕获 `ExtensionError`；其他异常可继续传播。该契约冲突已登记为 C11，见下文。
+- 单个扩展失败不应阻止其他资源清理：Registry 对每个扩展捕获普通 `Exception`、记录 warning 并继续关闭；不捕获 `BaseException`。
 
-##### C11：扩展关闭异常未完全隔离
+##### C11：扩展关闭异常隔离（已修复）
 
-源码 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all` 只捕获 `ExtensionError`。其他普通异常会中断逆序关闭循环；现有测试 `tests/unit/extension_core/test_registry.py::test_shutdown_exception` 明确断言 `ValueError` 向外传播。这与 `REQ-EXT-004` 的单扩展异常隔离契约冲突。完整套件本轮运行结果见 `testing.md` 第 1.1 节，但该现有测试验证的是相反行为，不能据此标记契约通过。
+`src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all` 逐扩展捕获普通 `Exception`，产生 warning 后继续逆序关闭，并在 `finally` 中清理该扩展的 initialized 状态；`BaseException` 仍向外传播。
 
-**建议：** 按契约逐扩展隔离普通异常、记录 warning 并继续关闭；补充测试确认后续扩展仍关闭且状态清理完成。不要捕获 `BaseException`。本轮仅更新文档，未修改源码或测试。
+回归测试：`tests/unit/extension_core/test_registry.py::test_shutdown_exception_is_isolated`、`test_extension_error_is_isolated`、`test_shutdown_does_not_catch_base_exception`。
 
 ### 11.5 依赖与分层原则
 
@@ -1543,7 +1512,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 #### 12.3.3 关闭与重绑定
 
 - `dispose()` 或等价释放动作必须在重绑定前调用。
-- 关闭失败应被隔离，不应影响其他扩展的清理。当前 Registry 只捕获 `ExtensionError`；其他普通异常会继续传播并可能中断后续清理，见 C11 与 `REQ-EXT-004`。
+- 关闭失败应被隔离，不应影响其他扩展的清理；Registry 已按 `REQ-EXT-004` 隔离普通异常并保留 `BaseException` 传播，见 C11。
 
 ### 12.4 约束与不变式
 
@@ -1569,7 +1538,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 - 分页应使用统一的 page/page_size 规则。
 - 计数必须和查询结果保持语义一致，避免重复计数或 JOIN 误差。
 
-> 本轮对照 HEAD 静态核对 C2：`build_count()` 将查询应用于 JOIN 后直接计数，存在一对多重复计数风险，见第 10.16 节；未运行对应复现测试，不能据此声称验收失败或修复状态已验证。
+> C2 已按“计数与列表行数一致”关闭：`build_count()` 与列表查询使用相同 JOIN/筛选条件，不做根记录去重；回归测试覆盖 1 个根对象 + 5 条子记录的 `count == 5`。
 
 ### 12.6 兼容性与扩展性
 

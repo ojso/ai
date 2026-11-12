@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-11 |
-> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `requirements.md`（契约）、`spec.md`（实现、Admin、插件与数据库专题）、`security.md`（安全）、`testing.md`（验证）、`demo.md`（示例） |
 
@@ -155,12 +155,18 @@ POST /new/ | /edit/
 ```text
 POST /user/login/
   → 校验密码
-  → tfa_enabled?
-      ├─ 否 → login_user → 重定向
-      └─ 是 → session[pending_tfa_user_id] → /user/verify_tfa/
+  → is_active?
+      ├─ 否 → 提示禁用，不建立会话
+      └─ 是 → tfa_enabled?
+            ├─ 否 → login_user → 重定向
+            └─ 是 → session[pending_tfa_user_id] → /user/verify_tfa/
 POST /user/verify_tfa/
   → 校验 TOTP/恢复码
-  → login_user(force=True) → 清理 pending
+  → login_user → 清理 pending
+每个请求加载会话：
+  → user_loader → is_active?
+      ├─ 否 → 清除 `_user_id` / remember Cookie → 匿名
+      └─ 是 → 校验密码指纹 → current_user
 ```
 
 ### 4.4 自定义 View
@@ -168,7 +174,7 @@ POST /user/verify_tfa/
 ```text
 @expose_url 方法
   → ViewMeta 包装
-  → @login_required / @requires_active
+  → @login_required
   → View.allow
   → render() / render_string()
 ```

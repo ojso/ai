@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-11 |
-> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用目录 | `flask-exts/examples/demo` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现及 View/Admin）、`requirements.md`（契约）、`testing.md`（测试）、`security.md`（安全） |
 >

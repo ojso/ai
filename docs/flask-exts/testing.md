@@ -6,15 +6,15 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-11 |
-> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；测试清单和统计已复核） |
+> | 最后更新 | 2026-11-12 |
+> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；测试清单和统计已复核） |
 > | 适用仓库 | `flask-exts` |
 > | 文档驱动 | `architecture.md`：架构；`spec.md`：设计和实现，第 10 章涵盖 View/Admin 路由、ModelView、DataBackend、Inline、AJAX、导出 |
 > | 行为契约 | `requirements.md`：`REQ-*`、验收标准、追溯 |
 > | 测试驱动 | `testing.md`（本文）：测试策略、用例、执行计划、质量门禁 |
 > | 安全治理 | `security.md`：威胁模型、控制措施、风险清单、发布检查 |
 >
-> **文档状态说明**：本文的测试目录与数量以 2026-11-11 的 HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`（发布版本 `0.4.1`）为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`，源码/测试中未发现 `mail_outbox`；这些仍属目标结构。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
+> **文档状态说明**：本文的测试目录与数量以 2026-11-12 的 HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`（v0.4.1 之后）为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
 >
 > **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文中标记为目标的规划不代表已实现；当前 CI 实现范围见第 11 节。
 
@@ -109,17 +109,17 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 
 | 指标 | 当前值 | 说明 |
 | --- | --- | --- |
-| 测试文件 | 47 个 `test_*.py` | 全部位于 `tests/unit/` 与 `tests/integration/` |
-| 测试函数 | 210 个 | 以 `def test_...` 统计 |
-| 断言 | 约 950 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
+| 测试文件 | 48 个 `test_*.py` | 全部位于 `tests/unit/` 与 `tests/integration/` |
+| 测试函数 | 225 个 | 以 `def test_...` 统计 |
+| 断言 | 约 996 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
 | 测试框架 | pytest | `pyproject.toml` 配置 |
-| 覆盖率工具 | `pytest-cov` / `coverage` | 已列入 `dev` 组；已测定基线，CI 每轮报告覆盖率，尚无 `fail-under` 门槛 |
+| 覆盖率工具 | `pytest-cov` / `coverage` | 已列入 `dev` 组；`[tool.coverage.run] source = ["src/flask_exts"]` 只统计库代码；已测定基线，CI 每轮报告覆盖率，尚无 `fail-under` 门槛 |
 | E2E 目录 | 无 | `tests/e2e/` 尚未创建 |
 | 性能目录 | 无 | `tests/performance/` 尚未创建 |
 | 浏览器测试 | 无 | 未引入 Selenium/Playwright |
 | 基准工具 | 无 | 未引入 `pytest-benchmark` |
 | 数据工厂 | 无 | 未引入 `factory-boy` / `faker` |
-| 最近完整测试运行 | 245 passed, 1 skipped | 2026-11-11；Python 3.13.5；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`（发布版本 `0.4.1`）；跳过 `test_smtp.py`，未配置 `REAL_EMAIL_SENDER` |
+| 最近完整测试运行 | 260 passed, 1 skipped | 2026-11-12；Python 3.13.5；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`（v0.4.1 之后的 3 个提交：注册邮箱、C2、C5/C6、C7、AUTHZ-005、ADMIN-010、EXT-004、AUTH-009/AUTH-010、`requires_active` 移除、SEC-18 日志脱敏、CI/工具链）；跳过 `test_smtp.py`，未配置 `REAL_EMAIL_SENDER` |
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -136,24 +136,24 @@ addopts = "-ra --strict-markers --strict-config"
 
 | 区域 | 测试函数数 | 主要文件 | 评价 |
 | --- | ---: | --- | --- |
-| `integration/admin` | 53 | 完整入口见 1.2.1 | 历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键；现状待核实 |
-| `unit/extension_core` | 30 | `test_registry.py`、`test_manager.py` | 覆盖依赖排序、循环依赖、幂等、关闭、内置扩展装配 |
-| `unit/admin` | 19 | `test_mockview.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py` | 覆盖视图元数据与格式化，偏“配置读取” |
+| `integration/admin` | 58 | 完整入口见 1.2.1 | 历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键、inactive admin、can_edit 边界；现状待核实 |
+| `unit/extension_core` | 32 | `test_registry.py`、`test_manager.py` | 覆盖依赖排序、循环依赖、幂等、关闭、异常隔离、内置扩展装配 |
+| `unit/admin` | 23 | `test_mockview.py`、`test_pagination.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py` | 覆盖视图元数据、格式化、分页 URL 编码，偏“配置读取” |
 | `unit/forms` | 23 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py` | 覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补 |
-| `integration/usercenter` | 14 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、TFA 启用/关闭/登录/防绕过、inactive 账号、改密码、找回/重置、恢复码 |
+| `integration/usercenter` | 17 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、非法注册邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、改密码、找回/重置、恢复码 |
 | `unit/datastore` | 14 | `test_db.py`、`test_query.py` | 覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖 |
-| `unit/security` | 9 | `tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py` | 授权包括 admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行 |
+| `unit/security` | 10 | `tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py` | 授权包括 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行 |
 | `integration/builtin_extensions` | 8 | `test_login.py`、`test_admin_views.py` | 覆盖 JWT、蓝图、默认视图 |
 | `unit/builtin_extensions` | 8 | `test_babel.py`、`test_exts.py`、`test_frontend.py` | 覆盖 Babel、扩展注册、Jinja 全局 |
 | `integration/security` | 5 | `tests/integration/security/test_core.py` | 覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效 |
 | `integration/userstore` | 3 | `test_sqla_userstore.py` | 覆盖模型注册、基础 CRUD、角色；`get_users`/`remove_user` 未覆盖 |
-| `unit/emailer` | 2 | `test_base.py`、`test_smtp.py` | 仅基础路径；错误路径与默认发送器未覆盖 |
+| `unit/emailer` | 3 | `test_base.py`、`test_smtp.py` | 基础信号路径、缺失 sender 的日志脱敏；SMTP 与错误路径仍可补 |
 | `unit/frontend` | 9 | `test_plugin_manager.py`、`test_base.py`、宏测试 | 覆盖注册、排序、循环依赖、资源拼接 |
 | `commands` | 0 | 无 | CLI 完全未测试 |
 
 #### 1.2.1 Admin 测试文件清单
 
-以下文件路径已与 2026-11-11 的仓库 HEAD 及当前工作树核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
+以下文件路径已与 2026-11-12 的仓库 HEAD `a61169f` 核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
 
 - `tests/integration/admin/sqla/test_views.py`
 - `tests/integration/admin/sqla/test_forms.py`
@@ -182,7 +182,6 @@ addopts = "-ra --strict-markers --strict-config"
 | `UserStore.get_users` / `remove_user` 未覆盖 | 接口契约与实现不一致 | 新增 |
 | CLI 未覆盖 | 建表/建用户命令回归无保护 | 新增 |
 | 安全令牌过期测试被注释 | 过期路径没有自动化保护 | 新增 |
-| `mail_data` 模块级全局 | 测试顺序/并行敏感 | 测试隔离 |
 | 无浏览器/JS 测试 | 前端插件、Tom Select、模态框等只能人工验证 | 可选 |
 
 ### 1.4 与目标基线的差距
@@ -191,7 +190,7 @@ addopts = "-ra --strict-markers --strict-config"
 
 ### 1.5 数据快照与重新统计
 
-本文的 47 / 210 / 950 已按 2026-11-11 的 HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`（发布版本 `0.4.1`）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 48 / 225 / 996 已按 2026-11-12 的 HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b` 重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -279,11 +278,11 @@ PY
 
 ### 2.4 并行、顺序与 flaky 处理
 
-当前测试默认串行执行，且存在模块级 `mail_data` 这类顺序敏感状态。目标状态：
+当前测试默认串行执行；原模块级 `mail_data` 已由 function-scope `mail_outbox` fixture 取代。目标状态：
 
 | 能力 | 工具 | 是否已有 | 建议 |
 | --- | --- | --- | --- |
-| 并行执行 | `pytest-xdist` | 否 | 可选；先消除模块级可变状态 |
+| 并行执行 | `pytest-xdist` | 否 | 可选；模块级可变状态已消除 |
 | 随机顺序 | `pytest-randomly` | 否 | 可选；用于暴露顺序依赖 |
 | 超时保护 | `pytest-timeout` | 否 | 可选；防止挂起 |
 | 失败重试 | `pytest-rerunfailures` | 否 | **不推荐**作为常规手段 |
@@ -514,7 +513,7 @@ def app():
 | `admin_user` | function | 待补 | 创建激活的 admin 角色用户 |
 | `authenticated_client` | function | 待补 | 已登录的 `client`（session 注入或走登录路由） |
 | `admin_client` | function | 待补 | 已登录且具备 admin 角色的 client |
-| `mail_outbox` | function | 待补 | 捕获邮件数据，替代模块级 `mail_data` |
+| `mail_outbox` | function | 现有 | 每个测试独立的邮件列表；`setup` 用 `EmailSender(mail_outbox)` 注册 sender |
 | `csrf_client` | function | 待补 | 开启 CSRF 的 client，并提供取 token 的辅助 |
 | `query_counter` | function | 待补 | 统计当前 app 引擎的 SQL 次数，用于 N+1 检测 |
 | `seeded_db` | function | 待补 | 预置 100/1000/10000 条数据，供性能测试 |
@@ -523,56 +522,44 @@ def app():
 
 > “待补”表示本文给出设计，但仓库尚未实现。落地顺序见第 12 节 Phase 0。
 
-### 4.3 `mail_outbox` 设计（替换 `mail_data`）
+### 4.3 `mail_outbox`（已实现）
 
-当前 `tests/integration/usercenter/test_user_view.py` 使用模块级：
-
-```python
-mail_data = []
-
-class EmailSender(Sender):
-    def send(self, data):
-        mail_data.append(data)
-```
-
-建议改为：
+`tests/integration/usercenter/test_user_view.py` 现使用 function-scope fixture：
 
 ```python
 @pytest.fixture
-def mail_outbox(app):
-    outbox = []
+def mail_outbox():
+    """Per-test mailbox for messages captured by EmailSender."""
+    return []
 
-    class CapturingSender(Sender):
-        def send(self, data):
-            outbox.append(data)
 
-    with app.app_context():
-        emailer = app.extensions["exts"].get_extension("emailer").get_emailer()
-        # register_sender 在名称已存在时会抛 ValueError（例如应用配置了
-        # NOREPLY_EMAIL_SENDER）。测试中先移除再注册，保证 fixture 可重复使用。
-        # 注意：email_change 复用了 verify_email 的 sender/type，不需要单独注册。
-        for name in ("verify_email", "reset_password"):
-            emailer.senders.pop(name, None)
-            emailer.register_sender(name, CapturingSender())
+class EmailSender(Sender):
+    def __init__(self, outbox):
+        self.outbox = outbox
 
-    yield outbox
-    outbox.clear()
+    def send(self, data):
+        self.outbox.append(data)
 ```
 
-使用：
+`setup` fixture 注册该 sender：
 
 ```python
-def last_email(outbox, type_):
-    matches = [data for data in outbox if data.get("type") == type_]
-    assert matches, f"no email of type {type_!r}: {[d.get('type') for d in outbox]}"
-    return matches[-1]
+@pytest.fixture
+def setup(self, app, client, mail_outbox):
+    ...
+    email_sender = EmailSender(mail_outbox)
+    email.register_sender("verify_email", email_sender)
+    email.register_sender("reset_password", email_sender)
+```
 
+测试通过 `mail_outbox` 参数读取邮件，不再共享模块级列表：
 
+```python
 def test_signup_sends_verification(app, client, mail_outbox):
     ...
-    email = last_email(mail_outbox, "verify_email")
+    email = mail_outbox[-1]
     assert email["email"] == "user@example.com"
-    assert "token=" in email["verification_link"]
+    assert "verification_link" in email
 ```
 
 优点：每个测试独立 outbox，可重排、可并行、失败信息更清晰。
@@ -806,7 +793,7 @@ class UserFactory(factory.Factory):
 - **时间**：优先让被测函数接受显式时间参数；无法注入时用 `monkeypatch` 固定 `datetime`/`time`，不要 `sleep`。
 - **随机**：需要随机值时固定 seed；不要用随机值生成断言依赖的数据。
 - **唯一值**：用 `uuid4().hex` 或测试名前缀 + 序号，避免跨测试、跨进程冲突。
-- **外部输入**：搜索词、文件名、URL 参数用表驱动覆盖边界（空串、空格、`&`、中文、超长）。
+- **外部输入**：搜索词、文件名、URL 参数用表驱动覆盖边界（空串、空格、`&`、非 ASCII、超长）。
 - **上传/导出**：一律写 `tmp_path`，不提交二进制产物。
 - **网络**：不访问真实 SMTP、HTTP、DNS；在边界处 mock。
 
@@ -939,7 +926,7 @@ class UserFactory(factory.Factory):
 | TC-EXT-013 | `post_init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
 | TC-EXT-014 | `post_init` 按依赖顺序 | U | P1 | 现有 | 顺序正确 |
 | TC-EXT-015 | `shutdown` 逆序 | U | P0 | 现有 | 与初始化相反 |
-| TC-EXT-016 | `shutdown` 单扩展异常隔离 | U | P1 | 现有测试与契约冲突 | 预期应继续关闭其他扩展并产生 warning；当前 `tests/unit/extension_core/test_registry.py::test_shutdown_exception` 断言 `ValueError` 传播，见 C11 |
+| TC-EXT-016 | `shutdown` 单扩展异常隔离 | U | P1 | 现有 | 继续关闭其他扩展并产生 warning；`BaseException` 不被吞掉；`test_shutdown_exception_is_isolated` |
 | TC-EXT-017 | 内置扩展图可初始化 | I | P0 | 现有 | 所有内置扩展初始化成功 |
 | TC-EXT-018 | Admin 收集 Portal/UserCenter 视图 | I | P0 | 现有 | 视图注册到 admin |
 | TC-EXT-019 | 晚注册扩展 | U | P2 | 待补 | 文档化行为：不回溯扫描 |
@@ -1004,9 +991,10 @@ class UserFactory(factory.Factory):
 | TC-ADMIN-028 | 权限：未激活账号 | I | P0 | 待补 | 拒绝账号功能 |
 | TC-ADMIN-029 | 动态翻译 | I | P1 | 现有 | 语言切换后文本变化 |
 | TC-ADMIN-030 | 表单额外字段/自定义基类 | I | P1 | 现有 | 字段存在/渲染 |
-| TC-ADMIN-031 | 一对多搜索计数 | I | P0 | 待补 | 分页总数不重复（对应 C2） |
-| TC-ADMIN-032 | URL 特殊字符 | I | P1 | 待补 | 搜索词含 `&`/空格/中文仍正确（对应 C6） |
+| TC-ADMIN-031 | 一对多搜索计数 | I | P0 | 现有 | 分页总数与列表实际行数一致（含重复根行）；`test_related_search_count_matches_list_rows`（对应 C2） |
+| TC-ADMIN-032 | URL 特殊字符 | I | P1 | 现有 | 搜索词含 `&`/空格/非 ASCII 时 URL 编码正确并可回放；`test_get_list_url_encodes_special_characters`、`test_search_url_encodes_special_characters` |
 | TC-ADMIN-033 | 列表空结果/越界页 | I | P1 | 待补 | 200，空列表，页数合理 |
+| TC-ADMIN-040 | AJAX 更新受 can_edit 约束 | I | P0 | 现有 | `can_edit=False` 时 `/ajax/update/` 返回 403 且记录不变；`test_ajax_update_requires_can_edit`（对应 V-01/SEC-19） |
 
 补充测试缺口（2026-11-07 快照，现状待核实）：
 
@@ -1058,13 +1046,13 @@ class UserFactory(factory.Factory):
 | TC-SEC-012 | 授权：admin | U | P0 | 现有 | 允许 |
 | TC-SEC-013 | 授权：普通用户/无角色 | U | P0 | 现有 | 拒绝 |
 | TC-SEC-014 | `allow_access` 公开视图 | U | P0 | 现有 | 允许 |
-| TC-SEC-015 | `requires_active` 未激活 | U | P0 | 现有 | 拒绝 |
 | TC-SEC-016 | TFA 生成/校验 | U | P0 | 现有（弱） | 正确码通过，错误码失败 |
 | TC-SEC-017 | TFA 恢复码 | U | P0 | 待补 | 一次性使用/失效 |
 | TC-SEC-018 | TFA 待验证不能访问 | I | P0 | 现有 | 重定向/401 |
 | TC-SEC-019 | 密码变更使会话失效 | I | P0 | 现有 | 旧 session 失效 |
 | TC-SEC-020 | 安全重定向 | U | P0 | 现有 | 外部/畸形 URL 拒绝 |
 | TC-SEC-021 | JWT 编解码/过期/畸形 | I | P1 | 现有 | 正确/异常 |
+| TC-SEC-022 | 授权：inactive admin | U/I | P0 | 现有 | 访问 Admin 返回 403；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` |
 
 补充场景与测试建议（2026-11-07 快照，现状待核实；风险编号不是测试编号）：
 
@@ -1078,7 +1066,7 @@ class UserFactory(factory.Factory):
 - SEC-12：配置安全 Cookie 后断言 `Set-Cookie` 的 `Secure`、`HttpOnly` 和 `SameSite`。
 - SEC-16：禁用、重新启用 TFA 后断言旧恢复码被拒。
 - SEC-17：模拟 SMTP，确认使用校验证书与主机名的 SSL context。
-- SEC-18：模拟 logger，断言 warning 不含令牌和链接。
+- SEC-18：模拟 logger，断言 warning 不含令牌和链接（已实现：`test_missing_sender_warning_redacts_payload`）。
 - SEC-19 / V-01：`can_edit=False` 且配置 `column_editable_list` 时，断言 `ajax_update` 被拒；两个编号指向同一问题。
 
 上述风险场景尚未在此单独分配 TC 编号；不能凭风险编号或已有文件推断测试实现和执行结果。
@@ -1111,7 +1099,7 @@ class UserFactory(factory.Factory):
 | TC-AUTH-002 | 重复邮箱/用户名 | I | P0 | 现有 | 错误提示 |
 | TC-AUTH-003 | 登录成功 | I/E | P0 | 现有 | 重定向/会话 |
 | TC-AUTH-004 | 登录失败 | I | P0 | 现有 | 统一错误，不枚举 |
-| TC-AUTH-005 | 未激活登录 | I | P0 | 现有 | 按设计处理 |
+| TC-AUTH-005 | 禁用账号登录 | I | P0 | 现有 | `is_active=False` 正确密码也拒绝；未验证邮箱（`is_active=True`）可登录 |
 | TC-AUTH-006 | 登出 | I/E | P0 | 现有 | 会话清理 |
 | TC-AUTH-007 | 资料页需登录 | I | P0 | 现有 | 重定向登录 |
 | TC-AUTH-008 | 邮箱验证 | I/E | P0 | 现有 | `email_verified=True` |
@@ -1126,9 +1114,11 @@ class UserFactory(factory.Factory):
 | TC-AUTH-017 | TFA 启用/关闭 | I | P0 | 现有（部分） | `tfa_enabled` 变化 |
 | TC-AUTH-018 | TFA 登录完整流程 | E | P0 | 待补 | 密码→验证码→登录 |
 | TC-AUTH-019 | TFA 待验证不能绕过 | I | P0 | 现有 | 受保护页拒绝 |
-| TC-AUTH-020 | 未激活账号功能限制 | I | P0 | 现有 | 账号功能拒绝 |
+| TC-AUTH-020 | 禁用账号旧会话即时失效 | I | P0 | 现有 | 下一次请求 `user_loader` 返回 None、清除 `_user_id`；受保护页 302；重新启用后仍需登录 |
 | TC-AUTH-021 | 开放重定向 | I | P0 | 待补 | `next` 外部 URL 被拒 |
 | TC-AUTH-022 | 重复提交/并发注册 | I | P2 | 待补 | 唯一约束生效 |
+| TC-AUTH-029 | 禁用账号拒绝登录 | I | P0 | 现有 | 正确密码但不建立 `_user_id`；提示账号已禁用 |
+| TC-AUTH-030 | 禁用账号不能完成 pending TFA | I | P1 | 现有 | pending 被清理，重定向登录 |
 
 ### 7.8 Emailer
 
@@ -1136,7 +1126,7 @@ class UserFactory(factory.Factory):
 | --- | --- | --- | --- | --- | --- |
 | TC-EMAIL-001 | 信号触发发送 | U | P0 | 现有 | sender 收到 data |
 | TC-EMAIL-002 | 缺少 `type` | U | P1 | 待补 | warning，不发送 |
-| TC-EMAIL-003 | 未知 sender | U | P1 | 待补 | warning，不抛 |
+| TC-EMAIL-003 | 未知 sender | U | P1 | 现有 | warning 不抛；记录 type + 脱敏收件人，不含令牌/链接 |
 | TC-EMAIL-004 | SMTP 成功（mock） | U | P1 | 现有（基础） | 调用成功 |
 | TC-EMAIL-005 | SMTP 异常 | U | P1 | 待补 | `SmtpError` 处理 |
 | TC-EMAIL-006 | 重复注册 sender | U | P1 | 待补 | `ValueError` |
@@ -1579,22 +1569,17 @@ coverage html
 # 打开 htmlcov/index.html
 ```
 
-或在 `pyproject.toml` 中配置：
+或在 `pyproject.toml` 中配置（当前仓库已启用）：
 
 ```toml
 [tool.coverage.run]
 source = ["src/flask_exts"]
-branch = true
-omit = [
-  "*/tests/*",
-  "*/examples/*",
-  "*/static/vendor/*",
-]
 
 [tool.coverage.report]
 show_missing = true
-skip_covered = true
 ```
+
+分支覆盖与 `omit` 目前未启用；需要时再补 `branch = true` 和静态资源/示例排除。
 
 ### 10.3 质量门禁
 
@@ -1626,12 +1611,21 @@ skip_covered = true
 
 基线已首次测定；后续代码或依赖变化后重新测量并追加记录。10.1 的“目标”仍只是目标，不是已配置的 CI 门槛。
 
+> **口径说明**：2026-11-12 之前的记录未限制 `source`，`coverage run -m pytest` 同时统计了 `tests/` 与库代码，且未计入未被导入的源码文件，因此与当前“仅 `src/flask_exts`”的口径不可直接比较。以下旧行保留作历史记录，自 2026-11-12 口径修正行起使用新口径。
+
 | 日期 | commit | 行覆盖 | 分支覆盖 | 函数覆盖 | 命令 | 备注 |
 | --- | --- | ---: | ---: | ---: | --- | --- |
 | 2026-11-10 | `171b40968f309c04ae3ad423696227c2767b0055` | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 首次实测基线（229 passed, 1 skipped；全套 31.81s） |
 | 2026-11-11 | `171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 当前工作树复测（233 passed, 1 skipped；全套 32.79s；8601 statements, 866 missed） |
 | 2026-11-11 | `171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 修复 `ChoiceField` 后复测（245 passed, 1 skipped；全套 32.49s；8685 statements, 862 missed） |
 | 2026-11-11 | `03006024d21167c0f6285a5724a3be5ef24d9a59`（v0.4.1） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 发布提交复测（245 passed, 1 skipped；全套 31.25s；8685 statements, 862 missed） |
+| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 注册邮箱校验、C5/C6 修复 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 251 passed, 1 skipped；全套 32.86s；8750 statements, 861 missed |
+| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 EXT-004 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 257 passed, 1 skipped；全套 32.31s；8815 statements, 858 missed |
+| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-009 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 259 passed, 1 skipped；全套 34.25s；8837 statements, 855 missed |
+| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-010 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 261 passed, 1 skipped；全套 34.32s；8865 statements, 857 missed |
+| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 `requires_active` 移除 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 259 passed, 1 skipped；全套 33.09s；8833 statements, 855 missed |
+| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与覆盖率口径修正 | 83% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 259 passed, 1 skipped；全套 36.72s；5276 statements, 905 missed |
+| 2026-11-12 | `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`（v0.4.1 之后） | 83% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 260 passed, 1 skipped；全套 34.34s；5282 statements, 903 missed |
 
 规则：
 
@@ -1712,7 +1706,7 @@ python -m pytest -q tests/performance -m performance
 | Job | 触发 | 内容 |
 | --- | --- | --- |
 | `tests` | push / PR / 手动 | Python 3.11、3.12、3.13 矩阵；`uv sync --locked` 后运行 `uv run pytest -q`。3.11 验证最低支持，3.13 验证主力版本 |
-| `coverage` | push / PR / 手动 | Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m` + `coverage xml`，上传 `coverage.xml` artifact；未设置 `fail-under` 门槛 |
+| `coverage` | push / PR / 手动 | Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m`；覆盖率输出到 CI 日志，不上传 artifact；未设置 `fail-under` 门槛 |
 | `lint` | 仅 PR | 仅对变更文件运行 `ruff check`、`ruff format --check` 与 `djlint --check`，规避仓库历史格式问题 |
 
 说明：
@@ -1725,8 +1719,8 @@ python -m pytest -q tests/performance -m performance
 
 ### 11.4 产物
 
-- `coverage.xml`（`coverage-data` artifact，已实现）
-- 目标产物：`coverage.xml` / `htmlcov/`、`benchmark.json`（pytest-benchmark）、浏览器失败截图/HTML、Sphinx 构建日志
+- 覆盖率报告：`coverage report -m` 输出到 CI 日志，不上传 artifact。
+- 目标产物：`htmlcov/`、`benchmark.json`（pytest-benchmark）、浏览器失败截图/HTML、Sphinx 构建日志
 
 ### 11.5 本地与 CI 一致性
 
@@ -1747,7 +1741,7 @@ python -m pytest -q tests/performance -m performance
 
 1. 先看**第一个失败**，不要被后续级联失败干扰。
 2. 重跑单个文件，排除数据库/临时文件残留。
-3. 单独运行该测试，排除顺序依赖（尤其是 `mail_data` 这类模块级状态）。
+3. 单独运行该测试，排除顺序依赖（尤其是共享 fixture 或全局状态）。
 4. 检查环境差异：Python 版本、依赖版本、SQLite 版本、时区。
 5. 最后再怀疑实现；确认是缺陷后，先补失败测试，再修复。
 
@@ -1760,7 +1754,7 @@ python -m pytest -q tests/performance -m performance
 - [x] 运行全量测试，记录通过数/耗时
 - [ ] 运行 `coverage`，记录行/分支/函数覆盖率
 - [ ] 注册 markers（unit/integration/e2e/browser/performance/slow）
-- [ ] 新增 `mail_outbox` fixture，替换 `mail_data`
+- [x] 新增 `mail_outbox` fixture，替换 `mail_data`
 - [ ] 新增 `db_setup`、`user_factory`、`admin_user`、`authenticated_client`
 - [ ] 清理 `tests/tmp`、`tests/integration/tmp` 等临时产物（确认是否应被忽略）
 
@@ -1783,10 +1777,11 @@ python -m pytest -q tests/performance -m performance
 #### Phase 2：Integration 补强（第 2 周）
 
 - [ ] TC-ADMIN-021：Inline + AJAX 外键（先写失败测试，修复 C1）
-- [ ] TC-ADMIN-031：一对多搜索计数（修复 C2）
+- [x] TC-ADMIN-031：一对多搜索计数（C2 按列表行数一致）
 - [ ] TC-ADMIN-025/TC-ADMIN-026/TC-ADMIN-028：权限矩阵
 - [ ] TC-ADMIN-014/TC-ADMIN-015：导出边界与类型
-- [ ] TC-ADMIN-032/TC-ADMIN-033：URL 特殊字符、空结果/越界页
+- [x] TC-ADMIN-032：URL 特殊字符（已补）
+- [ ] TC-ADMIN-033：空结果/越界页
 - [ ] TC-AUTH-018/TC-AUTH-021：TFA 完整流程、开放重定向
 - [ ] TC-EMAIL-008：邮件内容
 - [ ] TC-ERROR-001～TC-ERROR-008：404/403/405/500、令牌错误、CSRF 失败
@@ -1832,13 +1827,13 @@ python -m pytest -q tests/performance -m performance
 | 集成测试 | 30+ | 约 80+ 个集成测试函数，已超额 | 不再追求数量，补关键缺口 |
 | E2E 测试 | 20+ | 0 | Phase 3 在 `tests/e2e/` 覆盖核心旅程；阶段验收见第 12 节 |
 | 性能测试 | 15+ | 0 | Phase 4 建 `tests/performance/` 并建立基线；阶段行动见第 12 节 |
-| 覆盖率 | ≥85% | 90%（2026-11-11 实测） | 已达标，作为基线监控防退化 |
+| 覆盖率 | ≥85% | 83%（2026-11-12 口径修正后，仅 `src/flask_exts`） | 未达标；作为基线监控，补关键路径测试 |
 | 分支覆盖 | ≥75% | 未测量 | 同上 |
 | 函数覆盖 | ≥90% | 未测量 | 同上 |
 | 关键路径 | 100% | 未系统定义 | 第 6/10 节已列清单 |
 | 测试框架 | pytest + 插件 | pytest + pytest-cov | 按需引入 benchmark/browser |
 | 测试目录 | unit/integration/e2e/performance | unit/integration | 按 Phase 创建 |
-| Fixtures | app/client/db/user/admin/auth | 已有 app/client/admin/login_as_admin | 补 db_setup/user_factory/mail_outbox |
+| Fixtures | app/client/db/user/admin/auth | 已有 app/client/admin/login_as_admin | 补 db_setup/user_factory |
 | 数据库事务 | 有设计 | 0 | 新增 TC-DATA-019～TC-DATA-027 |
 | 错误处理 | 未明确 | 0 | 新增 TC-ERROR-001～TC-ERROR-008 |
 | CI/CD | 集成 | `ci.yml` 已运行 Python 3.11–3.13 矩阵、覆盖率报告与 PR 变更文件 lint；`docs.yml` 构建文档；尚无 `fail-under` 门槛与 E2E | Phase 4 补 |
@@ -1854,7 +1849,7 @@ python -m pytest -q tests/performance -m performance
 
 | # | 债务 | 位置 | 影响 | 建议 |
 | --- | --- | --- | --- | --- |
-| T1 | 模块级 `mail_data` | `tests/integration/usercenter/test_user_view.py` | 测试隔离差 | 改 `mail_outbox` fixture |
+| T1 | 模块级 `mail_data`（已修复） | `tests/integration/usercenter/test_user_view.py` | 已改为 function-scope `mail_outbox` fixture | 保持每个测试独立 outbox |
 | T2 | 序列化过期断言被注释 | `tests/integration/security/test_core.py` | 过期路径无保护 | 用可控时间/短 max_age 补测 |
 | T3 | `test_count_query` 只断言非空 | `tests/unit/datastore/sqla/test_query.py` | 计数错误无法发现 | 断言具体数值，加一对多用例 |
 | T4 | 关联搜索未断言 count | `tests/integration/admin/sqla/test_search.py` | 分页总数可能错 | 加 `count` 断言 |
@@ -1917,7 +1912,7 @@ def test_something(app, client):
 - [ ] 使用 `pytest.raises(..., match=...)` 断言异常类型与消息
 - [ ] 慢测试加 `@pytest.mark.slow` / `performance` / `browser`
 - [ ] 清理临时文件/上传文件
-- [ ] 测试代码保持英文（i18n 测试除外）
+- [ ] 测试代码保持英文（i18n 或非 ASCII 编码测试除外）
 - [ ] 新增公共 fixture 有 docstring
 - [ ] 变更缺陷时先写失败测试，再修复
 - [ ] 不通过 `warnings.catch_warnings()` / `simplefilter()` 局部处理 `DeprecationWarning`；直接断言声明版本下的行为
@@ -1967,7 +1962,8 @@ def test_something(app, client):
 
 - [ ] `tests/e2e/`、`tests/performance/` 目录建立
 - [ ] markers 注册，默认运行排除 performance/browser
-- [ ] `mail_outbox`、`db_setup`、`user_factory`、`admin_user`、`authenticated_client` 可用
+- [x] `mail_outbox` 在 usercenter 测试模块可用
+- [ ] `db_setup`、`user_factory`、`admin_user`、`authenticated_client` 可用
 - [ ] `query_counter`、`seeded_db`、`tmp_upload_dir` 可用
 - [x] 覆盖率命令可重复执行，基线已记录
 

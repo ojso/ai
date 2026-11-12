@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（首批 49 条） |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-11 |
-> | 数据快照 | 2026-11-11（发布版本 `0.4.1`；HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-12 |
+> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`testing.md`（测试）、`demo.md`（示例）、`security.md`（安全）；View/Admin 见 `spec.md` 第 10 章 |
 >
@@ -227,11 +227,11 @@ REQ-<领域>-<序号>
 - **输出/副作用**：资源释放；产生 warning
 - **错误**：单扩展异常被隔离
 - **不变量**：关闭后不残留已绑定资源
-- **implementation**：`in-progress`（当前 Registry 仅捕获 `ExtensionError`，其他普通异常会中断关闭循环）
-- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055`；现有 `test_shutdown_exception` 断言 `ValueError` 传播，与本契约相反；完整套件运行结果见 `testing.md` 第 1.1 节）
-- **本轮实现观察**：源码位于 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all`；测试入口为 `tests/unit/extension_core/test_registry.py::test_shutdown_exception`，问题关联 C11。
-- **验收**：`testing.md` TC-EXT-015/TC-EXT-016；`tests/unit/extension_core/test_manager.py`
-- **关联**：`spec.md` 第 11.4.3 节 C11；`testing.md` TC-EXT-016 现有断言与契约冲突
+- **implementation**：`implemented`（`shutdown_all` 逐扩展捕获普通 `Exception`，记录 warning 后继续逆序关闭；`BaseException` 不捕获；状态清理放入 `finally`）
+- **verification**：`passed`（`test_shutdown_exception_is_isolated`、`test_extension_error_is_isolated`、`test_shutdown_does_not_catch_base_exception`；全套 260 passed, 1 skipped）
+- **本轮实现观察**：中间扩展抛 `ValueError`/`ExtensionError` 时，其余扩展仍按逆序关闭并产生 warning；`KeyboardInterrupt` 继续向外传播。
+- **验收**：`testing.md` TC-EXT-015/TC-EXT-016；`tests/unit/extension_core/test_registry.py`
+- **关联**：`spec.md` 第 11.4.3 节 C11（已修复）；`testing.md` TC-EXT-016 已与新契约一致
 
 ## 4. 数据库与查询
 
@@ -263,7 +263,7 @@ REQ-<领域>-<序号>
 
 - **前置**：用户存在、密码正确、账号可登录、CSRF 通过
 - **输入**：`username`、`password`、可选 `next`
-- **行为**：校验密码哈希；`tfa_enabled=False` 时调用 `login_user(force=True)`；渲染/重定向到 `next` 或 `/user/index/`
+- **行为**：校验密码哈希；`is_active=False` 时拒绝登录（见 `REQ-AUTH-009`）；`tfa_enabled=False` 时调用 `login_user()`（不设置 `force`）；渲染/重定向到 `next` 或 `/user/index/`
 - **输出/副作用**：session 中存在 `_user_id`；HTTP 302
 - **错误**：无（失败见 `REQ-AUTH-002`）
 - **不变量**：密码明文不落库、不进日志；`next` 必须经过安全重定向
@@ -296,7 +296,7 @@ REQ-<领域>-<序号>
 
 - **前置**：session 中有有效 pending user，用户仍启用 TFA
 - **输入**：正确 TOTP 或恢复码
-- **行为**：验证第二因子；成功后 `login_user(force=True)`；清理 pending；设置 `tfa_verified`；重定向 `next`
+- **行为**：验证第二因子；成功后 `login_user()`（不设置 `force`）；清理 pending；设置 `tfa_verified`；重定向 `next`
 - **输出/副作用**：session 中有 `_user_id` 与 `tfa_verified`；恢复码登录消耗一个恢复码
 - **错误**：错误验证码不建立 session，提示 `Invalid code`
 - **不变量**：第二因子失败不改变登录状态；恢复码只能使用一次
@@ -325,16 +325,13 @@ REQ-<领域>-<序号>
 - **验收**：`testing.md` TC-AUTH-006；`test_tfa` 的登出断言
 - **关联**：`security.md` 3.4
 
-### REQ-AUTH-007 未激活账号的访问边界
+### REQ-AUTH-007 禁用账号的账号级功能保护（已取代）
 
-- **前置**：用户已认证但 `is_active=False`（非 admin）
-- **输入**：访问资料/账号功能
-- **行为**：`profile`/`index` 可访问；`change_password`、`email_change`、`enable_tfa`、`setup_tfa`、`recovery_codes` 被拒绝
-- **输出/副作用**：拒绝时 403
-- **错误**：`@requires_active` 拒绝
-- **不变量**：未激活账号不能使用账号级功能
-- **验收**：`testing.md` TC-AUTH-020；`test_inactive_account_blocked_from_account_features`
-- **关联**：`security.md` 4.4；admin 例外见 `REQ-AUTHZ-005`
+- **lifecycle**：`superseded`（2026-11-12；`requires_active` 装饰器与授权器分支已移除）
+- **superseded-by**：`REQ-AUTH-010`
+- **历史行为**：`@requires_active` 在授权器层拒绝 `is_active=False` 的用户，用于保护 `allow_access=True` 视图中的账号功能。
+- **现行机制**：禁用账号无法登录（`REQ-AUTH-009`），既有会话由 `user_loader` 失效（`REQ-AUTH-010`），账号功能只需 `@login_required`。
+- **关联**：`security.md` 4.4
 
 ### REQ-AUTH-008 安全重定向
 
@@ -346,6 +343,28 @@ REQ-<领域>-<序号>
 - **不变量**：不能重定向到外部域名
 - **验收**：`testing.md` TC-SEC-020；`tests/unit/security/test_urls.py`
 - **关联**：`security.md` 7.5
+
+### REQ-AUTH-009 禁用账号不得建立登录会话
+
+- **前置**：用户存在、密码正确、`is_active=False`；`is_active` 是管理禁用标记，与邮箱验证无关
+- **输入**：登录表单；或处于 TFA pending 状态
+- **行为**：登录阶段直接拒绝，不设置 `force` 绕过 Flask-Login 的 `is_active` 检查；`tfa_enabled=True` 时也不写入 `pending_tfa_user_id`；pending 用户被禁用后不能完成 TFA/恢复码登录
+- **输出/副作用**：提示 `This account has been disabled. Please contact an administrator.`；session 无 `_user_id`；pending 状态被清理
+- **错误**：禁用账号拒绝登录
+- **不变量**：`is_active=False` 不能获得新会话；未验证邮箱（`email_verified=False`、`is_active=True`）不受影响
+- **验收**：`testing.md` TC-AUTH-029/TC-AUTH-030；`tests/integration/usercenter/test_user_view.py::test_disabled_account_cannot_log_in`、`test_disabled_account_cannot_complete_pending_tfa`
+- **关联**：`security.md` 3.1/3.5；`REQ-AUTH-010`
+
+### REQ-AUTH-010 禁用账号的既有会话立即失效
+
+- **前置**：用户已登录并持有有效会话，随后被设置为 `is_active=False`
+- **输入**：携带旧会话 Cookie 的任意请求
+- **行为**：`user_loader` 返回 `None`，清除 session 中的 `_user_id`，并标记清除 remember-me Cookie
+- **输出/副作用**：`current_user` 变为匿名；受 `@login_required` 保护的页面重定向登录；重新启用账号后旧 Cookie 仍然无效，必须重新登录
+- **错误**：不抛异常；旧会话按匿名处理
+- **不变量**：禁用在下一次请求即生效，不依赖任何视图级装饰器
+- **验收**：`testing.md` TC-AUTH-020；`tests/integration/usercenter/test_user_view.py::test_disabling_account_invalidates_existing_session`
+- **关联**：`security.md` 3.2/3.5；`REQ-AUTH-009`
 
 ## 6. 授权
 
@@ -375,23 +394,19 @@ REQ-<领域>-<序号>
 
 - **前置**：视图设置 `allow_access=True`
 - **输入**：匿名/已登录请求
-- **行为**：允许访问；不再要求 admin/super_admin；`@requires_active` 的方法仍检查 active
+- **行为**：允许访问；不再要求 admin/super_admin；禁用账号已在登录/会话阶段被拒绝（`REQ-AUTH-009`、`REQ-AUTH-010`）
 - **输出/副作用**：公开页面可访问
 - **错误**：无
 - **不变量**：公开视图不能泄露受保护数据
 - **验收**：`testing.md` TC-SEC-014；`test_authorizer.py::test_view_allow_access_precedes_authentication_gates`
 - **关联**：`security.md` 4.2
 
-### REQ-AUTHZ-004 requires_active 保护账号功能
+### REQ-AUTHZ-004 requires_active 保护账号功能（已废弃）
 
-- **前置**：方法标记 `@requires_active`
-- **输入**：已登录用户请求
-- **行为**：`is_active=False` 时拒绝；`is_active=True` 时继续后续授权
-- **输出/副作用**：403
-- **错误**：拒绝
-- **不变量**：未激活账号不能使用标记为 active-only 的功能
-- **验收**：`testing.md` TC-SEC-015；`test_inactive_account_blocked_from_account_features`
-- **关联**：`security.md` 4.2
+- **lifecycle**：`deprecated`（2026-11-12；装饰器与授权器分支已移除，无替代契约）
+- **历史行为**：`@requires_active` 标记 `allow_access=True` 视图中的账号功能，拒绝 `is_active=False` 的用户。
+- **现行机制**：禁用账号在登录与 `user_loader` 阶段即被拒绝（`REQ-AUTH-009`、`REQ-AUTH-010`），账号功能只需 `@login_required`。
+- **关联**：`security.md` 4.4
 
 ### REQ-AUTHZ-005 禁用 admin 必须失去 Admin 权限
 
@@ -401,11 +416,11 @@ REQ-<领域>-<序号>
 - **输出/副作用**：403/拒绝
 - **错误**：拒绝
 - **不变量**：`is_active=False` 必须覆盖 `admin` 角色
-- **implementation**：`in-progress`（`SimpleAuthorizer.allow` 在 `is_active` 检查前放行 `admin`，禁用管理员仍可访问）
-- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码判定逻辑存在确证缺陷；问题关联 SEC-01）
-- **本轮实现观察**：静态源码确认短路分支存在；待补针对该场景的自动化拒绝测试。
-- **验收**：待补（新增测试将先失败）；关联 `security.md` SEC-01
-- **关联**：`security.md` 4.3；`spec.md` 第 7 章；风险关联 `SEC-01`（本轮 HEAD 静态核对，未专项测试）
+- **implementation**：`implemented`（`SimpleAuthorizer.allow` 在 `admin` 角色判断前执行 `is_active` 检查）
+- **verification**：`passed`（`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied`；全套 260 passed, 1 skipped）
+- **本轮实现观察**：`admin + is_active=False` 访问 Admin 视图返回 403；active admin 仍可访问；公开 `allow_access` 视图行为不变。
+- **验收**：`testing.md` TC-SEC-022；`tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user`、`tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`
+- **关联**：`security.md` 4.3；`spec.md` 第 7 章；`SEC-01`（已修复，待发布）
 
 ### REQ-AUTHZ-006 role_need 与 super_admin
 
@@ -483,9 +498,9 @@ REQ-<领域>-<序号>
 - **输出/副作用**：表单错误
 - **错误**：邮箱格式错误
 - **不变量**：非法邮箱不得创建用户，也不得触发验证或重置邮件
-- **本轮实现观察**（HEAD `171b40968f309c04ae3ad423696227c2767b0055`）：静态源码显示 `RegisterForm.email` 只有 `DataRequired()`、没有 `Email()`（`security.md` SEC-05）；未运行无效邮箱注册复现
-- **验收**：待补（新增无效邮箱注册测试）
-- **关联**：`security.md` SEC-05（本轮 HEAD 静态核对，未专项测试）
+- **实现观察**（当前 `main`，v0.4.1 之后）：`RegisterForm.email` 使用 `DataRequired()`、`Email()` 与 `Length(max=254)`；`Email()` 通过 `email-validator` 做语法校验，不启用投递性检查
+- **验收**：`tests/integration/usercenter/test_user_view.py::test_register_rejects_invalid_email`；非法邮箱返回表单错误且不创建用户；全量 246 passed, 1 skipped
+- **关联**：`security.md` SEC-05（已修复）、`testing.md` 第 7.7 节
 
 ## 8. 密码重置
 
@@ -653,15 +668,15 @@ REQ-<领域>-<序号>
 
 - **前置**：根模型与子模型是一对多关系；搜索/筛选涉及子表
 - **输入**：搜索/筛选请求
-- **行为**：分页总数必须等于**去重后的根记录数**，不能按 JOIN 行数计数
-- **输出/副作用**：`count` 与根记录数一致
+- **行为**：分页总数必须等于**列表查询实际返回的行数**（包含一对多 JOIN 产生的行），用于与列表页显示行数一致
+- **输出/副作用**：`count` 与列表查询返回行数一致
 - **错误**：无
-- **不变量**：计数不随子记录数量放大
-- **implementation**：`in-progress`（`build_count()` 应用 JOIN 未对根模型去重，一对多关联搜索/筛选时计数虚高）
-- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码证实未去重；问题关联 C2）
-- **本轮实现观察**：静态源码确认计数逻辑应用了连接表但未生成 `distinct`；需补一对多关联查询的计数回归测试。
-- **验收**：`testing.md` TC-ADMIN-031（待补）；关联 `spec.md` 第 10.16 节 C2
-- **关联**：`spec.md` 第 10.16 节 C2 与第 12.5.2 节（HEAD 静态核对，未专项测试）
+- **不变量**：`count == len(list rows)`；分页页数按该行数计算；不额外做根记录去重
+- **implementation**：`implemented`（`build_count()` 对 JOIN、搜索、筛选后的结果执行 `count(*)`，与列表查询使用同一 `_apply()`）
+- **verification**：`passed`（`test_related_search_count_matches_list_rows`；全套 252 passed, 1 skipped）
+- **本轮实现观察**：1 个 Author 关联 5 条匹配子记录时，列表返回 5 行（同一根对象重复），`count == 5`；复合主键模型计数仍正确。
+- **验收**：`testing.md` TC-ADMIN-031；`tests/integration/admin/sqla/test_search.py::test_related_search_count_matches_list_rows`
+- **关联**：`spec.md` 第 10.16 节 C2（按列表行数语义关闭）与第 12.5.2 节
 
 ### REQ-ADMIN-006 CRUD 与最终数据库状态
 
@@ -715,25 +730,25 @@ REQ-<领域>-<序号>
 - **输出/副作用**：不执行写操作
 - **错误**：拒绝
 - **不变量**：任一视图开关为 `False` 时，所有对应写路径（含 `/ajax/update/` 与 Inline）都不能执行写操作
-- **implementation**：`in-progress`（`ajax_update` 仅校验 `column_editable_list`，未检查视图开关 `can_edit`）
-- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码证实存在绕过；问题关联 V-01 / SEC-19）
-- **本轮实现观察**：静态源码确认内联编辑路径缺少 `can_edit` 判断；需补当 `can_edit=False` 时 AJAX 更新返回 403 的测试。
-- **验收**：待补；关联 `spec.md` 第 10.16 节 V-01、`security.md` SEC-19
-- **关联**：`spec.md` 10.4.4；`V-01` / `SEC-19`（本轮 HEAD 静态核对，未专项测试）
+- **implementation**：`implemented`（`ajax_update` 在读取请求体前检查 `can_edit`，为 `False` 时返回 403）
+- **verification**：`passed`（`test_ajax_update_requires_can_edit`；全套 260 passed, 1 skipped）
+- **本轮实现观察**：`can_edit=False` 且配置 `column_editable_list` 时，AJAX 更新返回 403，数据库记录保持不变；`column_editable_list` 为空时仍返回 404。
+- **验收**：`testing.md` TC-ADMIN-040；`tests/integration/admin/sqla/test_actions.py::test_ajax_update_requires_can_edit`
+- **关联**：`spec.md` 第 10.16 节 V-01、`security.md` SEC-19（均已修复，待发布）
 
 ### REQ-ADMIN-011 列表 URL 正确编码
 
-- **前置**：搜索词/筛选值含空格、`&`、`#`、中文等
+- **前置**：搜索词/筛选值含空格、`&`、`#`、非 ASCII 字符等
 - **输入**：分页/排序/搜索/筛选参数
 - **行为**：生成的列表 URL 必须正确编码并可回放
 - **输出/副作用**：URL 可访问且结果一致
 - **错误**：无
 - **不变量**：列表 URL 经回放后搜索/筛选/排序结果与生成时一致，特殊字符不丢失
-- **implementation**：`in-progress`（`get_list_url` 手写查询字符串未 URL 编码；且 `hasattr(self, "get_url")` 死分支永远为假）
-- **verification**：`failed`（HEAD `171b40968f309c04ae3ad423696227c2767b0055` 源码证实存在编码缺陷与死分支；问题关联 C5、C6）
-- **本轮实现观察**：静态源码确认特殊字符查询串未转义；需补含空格、`&`、中文的列表 URL 回放测试。
-- **验收**：`testing.md` TC-ADMIN-032（待补）；关联 `spec.md` 第 10.16 节 C5/C6
-- **关联**：`spec.md` 10.12；`C5` / `C6`（本轮 HEAD 静态核对，未专项测试）
+- **implementation**：`implemented`（`get_list_url` 使用 `urllib.parse.urlencode(params, doseq=True)`；移除 `hasattr(self, "get_url")` 死分支，改为 `self.view.get_url(".index_view")`）
+- **verification**：`passed`（`test_get_list_url_encodes_special_characters`、`test_search_url_encodes_special_characters`；全套 251 passed, 1 skipped）
+- **本轮实现观察**：空格、`&`、非 ASCII 字符搜索词生成的列表 URL 可正确编码并回放；`sort=0` 不再被丢弃。
+- **验收**：`testing.md` TC-ADMIN-032；`tests/unit/admin/model/test_pagination.py`、`tests/integration/admin/sqla/test_search.py`
+- **关联**：`spec.md` 10.12；`C5` / `C6`（已修复）
 
 ### REQ-ADMIN-012 复合主键与字符串主键
 
@@ -749,7 +764,7 @@ REQ-<领域>-<序号>
 ### REQ-VIEW-001 自定义页面与模板
 
 - **前置**：自定义 `View` 或 `list_template`
-- **输入**：`expose_url`、`allow_access`、`login_required`、`requires_active`
+- **输入**：`expose_url`、`allow_access`、`login_required`
 - **行为**：路由可访问；`render`/`render_string` 渲染；模板可 `extends` 内置模板并传自定义参数
 - **输出/副作用**：HTML 响应
 - **错误**：未授权 403/登录重定向
@@ -789,7 +804,7 @@ REQ-<领域>-<序号>
 
 - [扩展生命周期](#3-扩展生命周期)：`REQ-EXT-003`、`REQ-EXT-004`
 - [数据库与查询](#4-数据库与查询)：`REQ-DATA-001`、`REQ-DATA-002`
-- [认证与会话](#5-认证与会话)：`REQ-AUTH-001`、`REQ-AUTH-003`、`REQ-AUTH-004`
+- [认证与会话](#5-认证与会话)：`REQ-AUTH-001`、`REQ-AUTH-003`、`REQ-AUTH-004`、`REQ-AUTH-009`、`REQ-AUTH-010`
 - [授权](#6-授权)：`REQ-AUTHZ-005`
 - [注册与邮箱验证](#7-注册与邮箱验证)：`REQ-REG-001`、`REQ-REG-006`
 - [密码重置](#8-密码重置)：`REQ-RESET-001`、`REQ-RESET-002`
