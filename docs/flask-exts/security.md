@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-12 |
-> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`main` 已包含 SEC-01/SEC-05/SEC-18/SEC-19 修复，待发布） |
+> | 最后更新 | 2026-11-13 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`demo.md`（示例）；View/Admin 见 `spec.md` 第 10 章 |
 >
@@ -47,7 +47,7 @@
 2. **强随机密钥**：`SECRET_KEY`、`JWT_SECRET_KEY`、`CSRF_SECRET_KEY` 使用独立、足够长的随机值，放在环境变量/密钥管理系统中，不写进仓库。
 3. **保持 CSRF 开启**：生产不要设置 `CSRF_ENABLED=False`；该开关仅用于测试或明确无 Cookie 的 API。
 4. **保护 admin 角色**：`admin` 角色当前拥有高权限；不要共享账号，管理员应启用 TFA，禁用账号前确认其 admin 角色已移除。
-5. **限制认证入口**：登录、注册、找回密码、TFA 验证目前**没有内置限流/锁定**；公网部署必须在反向代理/WAF 或业务层补限流。
+5. **限制认证入口**：`0.4.2` 已加入账号级失败锁定，但它只覆盖“已存在用户名”的连续失败；注册、找回密码、未知用户名尝试仍需在反向代理/WAF 层限流。
 
 ### 0.2 五条不要做
 
@@ -63,11 +63,11 @@
 
 | 风险项 | 缺陷根因 | 临时阻断要求（运维/管理） |
 | --- | --- | --- |
-| **SEC-01**（禁用 admin 仍有效） | 修复已进入 `main`（v0.4.1 之后），待发布；已发布的 0.4.1 及更早版本仍优先放行 `admin` 角色 | 对 0.4.1 及更早的部署：**禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时移除其 `admin` 角色，或直接删除账号。 |
+| **SEC-01**（禁用 admin 仍有效） | 已在 `0.4.2` 修复；0.4.1 及更早版本仍优先放行 `admin` 角色 | 对 0.4.1 及更早的部署：**禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时移除其 `admin` 角色，或直接删除账号。 |
 | **SEC-02**（JWT 绕过 TFA） | `load_user_from_request` 仅检查 `is_active`，未验证 TFA 完成标记 | 对开启双因素认证的高权限账号，**切勿为其发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。 |
-| **SEC-03**（认证端点无限流） | 登录、注册、TFA 校验、找回密码端点无内置防爆破与锁定机制 | **反向代理硬性限流**：Nginx / Envoy / WAF 必须对 `/user/login/`、`/user/verify_tfa/`、`/user/reset_password/` 开启基于来源 IP 或用户名的频次限制（如单 IP 每分钟 ≤5 次）。 |
-| **SEC-18**（未配置 sender 泄露令牌）（已修复，待发布） | `main` 中的 `send_email` 只记录 sender 类型与脱敏收件人，不再输出 `data` | 已发布 0.4.1 及更早版本仍会把完整载荷写入 warning；这些版本的日志需限制访问并过滤验证/重置链接。 |
-| **SEC-19 / V-01**（内联编辑绕过只读开关） | 修复已进入 `main`（v0.4.1 之后），待发布；已发布 0.4.1 及更早版本仅检查 `column_editable_list` | 对 0.4.1 及更早的部署：若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。 |
+| **SEC-03**（认证端点缺限流） | `0.4.2` 已加入账号级失败锁定（部分修复）：密码与第二因子共享计数、指数退避；但未知用户名、注册与找回密码入口仍无应用层计数 | **反向代理硬性限流仍然必须**：Nginx / Envoy / WAF 对 `/user/login/`、`/user/register/`、`/user/verify_tfa/`、`/user/forgot_password/`、`/user/reset_password/` 按来源 IP 限流（如单 IP 每分钟 ≤5 次），与内置账号锁定叠加。 |
+| **SEC-18**（未配置 sender 泄露令牌）（已在 0.4.2 修复） | `0.4.2` 的 `send_email` 只记录 sender 类型与脱敏收件人，不再输出 `data` | 已发布 0.4.1 及更早版本仍会把完整载荷写入 warning；这些版本的日志需限制访问并过滤验证/重置链接。 |
+| **SEC-19 / V-01**（内联编辑绕过只读开关） | 已在 `0.4.2` 修复；0.4.1 及更早版本仅检查 `column_editable_list` | 对 0.4.1 及更早的部署：若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。 |
 
 ## 1. 范围与威胁模型
 
@@ -221,24 +221,30 @@ GET /user/login/
 POST /user/login/
   ├─ 表单校验（CSRF、用户名/密码必填）
   ├─ login_user_by_username_password(username, password)
+  │    ├─ 锁定未过期 → 不校验密码 → AccountLockedError
   │    ├─ 用户不存在 → 执行 dummy scrypt 校验 → InvalidCredentialsError
   │    ├─ 用户存在但无密码 → dummy 校验 → InvalidCredentialsError
-  │    ├─ 密码错误 → check_password_hash → InvalidCredentialsError
-  │    └─ 成功 → user
+  │    ├─ 密码错误 → check_password_hash → 记录失败 → InvalidCredentialsError
+  │    └─ 成功 → user（失败计数在完整登录成功后清零）
   ├─ user.is_active?
   │    ├─ 否 → 提示账号已禁用，不建立会话
   │    └─ 是 → safe_redirect_target(next, fallback)
   ├─ user.tfa_enabled?
-  │    ├─ 否 → login_user(user) → 重定向
+  │    ├─ 否 → login_user(user) → 清零失败计数 → 重定向
   │    └─ 是 → session[pending_tfa_user_id] = user.id
   │             → 重定向 /user/verify_tfa/
   └─ 失败 → 统一提示 "Invalid username or password."
 ```
 
+### 3.1a 失败计数与锁定
+
+`/user/verify_tfa/` 与 `/user/recovery/` 的验证码错误同样计入 `failed_login_count`，命中阈值后写入 `locked_until`；锁定的账号无法继续 pending TFA（`_get_pending_tfa_user` 清理 pending 状态）。成功完成第二因子或成功重置密码时清零。详见 8.5。
+
 安全要点：
 
-- **统一错误**：登录失败不区分“用户不存在/密码错误”，降低枚举。
+- **统一错误**：登录失败不区分“用户不存在/密码错误”，降低枚举。锁定状态会单独提示剩余时间，因此已锁定账号可被识别；该枚举面与注册表单的用户名/邮箱重复提示一致（SEC-10）。
 - **dummy hash**：用户不存在时也执行一次 scrypt 校验，降低时间侧信道。
+- **失败锁定**：连续失败计数存在用户行上（`failed_login_count` / `locked_until`），与 IP 无关，跨进程一致，详见 8.5。
 - **`is_active` 由 Flask-Login 原生检查**：登录不传 `force`；禁用账号无法建立会话。`is_active` 只表示管理禁用，与邮箱验证无关。
 - **TFA 前不建立会话**：密码正确但 TFA 未完成时，只写入 pending user id，不调用 `login_user`。
 - **安全重定向**：`next` 参数经过 `safe_redirect_target`（见 7.5）。
@@ -375,7 +381,7 @@ def allow(self, *args, **kwargs):
 | **`admin` + inactive** | **拒绝** | 先检查 `is_active`，再判断 `admin` |
 | `admin` + 任意视图（active） | 放行 | 高权限，需重点保护 |
 
-**SEC-01（高，已修复待发布）**：`main` 已把 `is_active` 检查移到 `admin` 角色判断之前；`is_active=False` 的管理员访问 Admin 返回 403，公开 `allow_access` 视图行为不变。回归测试见 `tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`。
+**SEC-01（高，已在 0.4.2 修复）**：`0.4.2` 已把 `is_active` 检查移到 `admin` 角色判断之前；`is_active=False` 的管理员访问 Admin 返回 403，公开 `allow_access` 视图行为不变。回归测试见 `tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`。
 
 对已发布的 0.4.1 及更早版本，仍需按第 0.3 节执行临时阻断：禁用管理员时**同时移除 admin 角色**或删除账号。
 
@@ -551,11 +557,12 @@ return self.app.config.get(f"{serializer_name.upper()}_MAX_AGE", default_max_age
 
 `SmtpSSL` 使用 `smtplib.SMTP_SSL`：
 
-- **源码未显式传入 SSL context**：`SmtpSSL` 构造 `smtplib.SMTP_SSL` 时没有提供 context；不同受支持 Python 版本的默认证书/主机名校验行为未在本轮核验。显式使用 `ssl.create_default_context()` 并增加验证测试前，应按 SEC-17 保持风险状态。
+- `SmtpSSL` 显式传入 `ssl.create_default_context()`，启用证书链与主机名校验（`CERT_REQUIRED`、`check_hostname=True`），默认使用 Python/系统 CA 存储。私有 CA 通过 `SSL_CERT_FILE`、`SSL_CERT_DIR` 或系统信任库配置，不要关闭校验。
+- TLS 握手失败会包装为 `SmtpError`，`__cause__` 保留 `ssl.SSLCertVerificationError`；`test_smtp_ssl_sends_over_a_verified_context` 与 `test_smtp_ssl_wraps_tls_failures` 覆盖。
 - 使用 `NOREPLY_EMAIL_SENDER` 中的 `host/port/user/password`。
 - 不要在代码/仓库中硬编码 SMTP 凭据。
-- `send_email` 找不到 sender 时只记录 sender 类型与脱敏收件人（如 `a***@example.com`），不记录链接或令牌（SEC-18 已修复，待发布）。
-- 建议：显式传入 `ssl.create_default_context()`，启用证书与主机名校验；使用专用发信账号、最小权限、密钥轮换、发送量监控。
+- `send_email` 找不到 sender 时只记录 sender 类型与脱敏收件人（如 `a***@example.com`），不记录链接或令牌（SEC-18 已在 0.4.2 修复）。
+- 建议：使用专用发信账号、最小权限、密钥轮换与发送量监控。
 
 ## 7. CSRF 与浏览器安全
 
@@ -682,8 +689,8 @@ def get_totp_secret(self):
 注意：
 
 - 启用/关闭 TFA 需要当前 TOTP 验证码，但**不要求重新输入密码**。
-- 关闭 TFA 会清空 `totp_secret`，但**不会自动清空 `recovery_codes`**；重新启用 TFA 后，旧恢复码仍可能有效，直到用户重新生成覆盖（SEC-16）。
-- `rebind_tfa` 的 pending secret 在 session 中加密保存；它不会自动作废其他未使用的恢复码。
+- 关闭 TFA 会同时清空 `totp_secret` 与 `recovery_codes`；重新启用后必须重新生成恢复码（SEC-16）。
+- `rebind_tfa` 的 pending secret 在 session 中加密保存；重绑成功会清空未使用的恢复码，需要重新生成。
 
 ### 8.3 登录时的 TFA
 
@@ -698,17 +705,46 @@ def get_totp_secret(self):
 | 缺口 | 等级 | 说明 |
 | --- | --- | --- |
 | JWT 绕过 TFA | 高（启用 JWT 时） | `load_user_from_request` 只检查 active，不检查 TFA（SEC-02） |
-| 无限流/锁定 | 高（公网） | 6 位 TOTP 可被在线暴力尝试（SEC-03） |
+| 无限流/锁定 | 高（公网） | 6 位 TOTP 可被在线暴力尝试；`0.4.2` 已加入内置失败锁定，仍缺注册/找回入口限流与验证码（SEC-03） |
 | 无 TOTP 重放防护 | 低-中 | 同一 30 秒窗口内验证码可重复使用；pyotp 默认窗口 |
 | `TFA_EXEMPT_ENDPOINTS` 未实现 | 中 | `flask-exts/docs/configure.rst` 有文档，代码中无引用（SEC-04） |
-| 恢复码明文兼容分支 | 低 | `recovery` 同时接受哈希校验和 `compare_digest` 明文比较（SEC-13） |
 
 建议：
 
 - 启用 JWT API 时，在 JWT 载荷加入 `amr`/`tfa` 声明，或在 `load_user_from_request` 中强制 TFA。
-- 在反向代理/WAF 或应用层对登录/TFA/恢复码接口限流。
+- 在反向代理/WAF 对登录/TFA/恢复码接口限流，与内置账号锁定叠加。
 - 评估 TOTP `valid_window` 与重放缓存。
 - 实现或移除 `TFA_EXEMPT_ENDPOINTS` 文档承诺。
+
+### 8.5 失败登录锁定（v0.4.1 之后）
+
+`main` 在 `users` 表上新增两个字段，并在 `SqlaUserStore` 中实现账号级失败计数：
+
+| 字段 | 类型 | 作用 |
+| --- | --- | --- |
+| `failed_login_count` | `int NOT NULL DEFAULT 0` | 连续失败次数，密码错误与第二因子错误共用 |
+| `locked_until` | `timestamp NULL` | 锁定截止时间，过期后自动恢复 |
+
+行为：
+
+- 失败达到 `USER_LOGIN_MAX_FAILURES`（默认 5）后开始锁定，延迟从 `USER_LOGIN_LOCKOUT_BASE_SECONDS`（默认 60 秒）起按 2 的幂增长，上限 `USER_LOGIN_LOCKOUT_MAX_SECONDS`（默认 3600 秒）。
+- 锁定期间密码校验不会执行，登录页返回剩余等待时间。
+- 锁定的账号无法继续进行 pending TFA 校验；`_get_pending_tfa_user` 会清理 pending 状态。
+- 只有完整登录成功（密码，或密码 + 第二因子）或成功重置密码才清零计数；仅密码正确不会清零。
+- 锁定状态与 `is_active` 分离：前者自动过期，后者是管理员禁用。
+- 计数存在数据库中，因此与客户端 IP 无关，并在共享同一数据库的多进程/多实例间一致。
+
+未覆盖的部分：
+
+- 未知用户名的尝试无法计数（没有用户行），仍需反向代理按 IP 限流。
+- 注册、找回密码、重发验证邮件没有应用层计数，仍需反向代理限流。
+- 锁定提示会暴露“该账号存在且被锁定”；当前注册表单本身已可枚举用户名（SEC-10），因此未额外增加泄漏面。
+
+管理员解锁：
+
+```python
+current_userstore.user_set(user, failed_login_count=0, locked_until=None)
+```
 
 ## 9. JWT / API 认证
 
@@ -824,7 +860,7 @@ if "Authorization" in request.headers:
 
 ### 10.5 生产反向代理配置参考（Nginx）
 
-由于框架内部未内置防爆破计数器（SEC-03），在公网部署时，生产环境的反向代理**必须承载 TLS 终止、安全请求头注入与认证端点限流**。以下为推荐配置片段：
+由于框架的账号级失败锁定（SEC-03，`0.4.2` 起）无法覆盖未知用户名、注册与找回密码入口，也没有 IP 维度，公网部署时生产环境的反向代理**必须承载 TLS 终止、安全请求头注入与认证端点限流**。以下为推荐配置片段：
 
 ```nginx
 # 1. 定义认证端点专用的 IP 限流区域（单 IP 每秒最多 1 次，防止字典攻击）
@@ -844,8 +880,9 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     # 3. 对敏感认证端点强制启用突发与限流规则（SEC-03 防护）
-    location ~ ^/user/(login|verify_tfa|reset_password)/ {
+    location ~ ^/user/(login|register|verify_tfa|recovery|forgot_password|reset_password)/ {
         limit_req zone=auth_limit burst=5 nodelay;
+        limit_req_status 429;
         proxy_pass http://127.0.0.1:8000;
 
         proxy_set_header Host $host;
@@ -868,13 +905,13 @@ server {
 
 ## 11. 已知风险与待决策
 
-> 本轮已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核实 SEC-01/02/05/17/18/19 的代码观察；其中 SEC-01、SEC-05、SEC-18 与 SEC-19 已在 `main` 修复（v0.4.1 之后，待发布）；其余风险按各条现有证据边界标记。等级基于“公网 + 默认配置”假设，实际影响取决于部署；这不是完整安全审计或渗透测试。
+> 本轮已对照 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 静态核实 SEC-01/02/05/17/18/19 的代码观察；其中 SEC-01、SEC-05、SEC-13、SEC-16、SEC-17、SEC-18 与 SEC-19 已在 `0.4.2` 修复，SEC-03 已加入账号级失败锁定（部分修复）；其余风险按各条现有证据边界标记。等级基于“公网 + 默认配置”假设，实际影响取决于部署；这不是完整安全审计或渗透测试。
 
 | ID | 等级 | 位置 | 现状 | 建议 |
 | --- | --- | --- | --- | --- |
-| SEC-01 | 高（已修复，待发布） | `security/authorizer/simple_authorizer.py` | `is_active` 检查已移到 `admin` 角色判断之前；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` 覆盖 | 已发布 0.4.1 及更早版本的部署仍需同时移除 admin 角色 |
+| SEC-01 | 高（已在 0.4.2 修复） | `security/authorizer/simple_authorizer.py` | `is_active` 检查已移到 `admin` 角色判断之前；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` 覆盖 | 已发布 0.4.1 及更早版本的部署仍需同时移除 admin 角色 |
 | SEC-02 | 高（启用 JWT） | `builtin_extensions/login_ext.py::load_user_from_request` | JWT 只检查 `is_active`，不检查 TFA | 在 JWT 中携带 `amr`/`tfa` 声明并校验，或返回前强制 TFA |
-| SEC-03 | 高（公网） | 登录/注册/找回/TFA/恢复码 | 无限流、无锁定、无验证码 | 反向代理/WAF 限流，或业务层加失败计数/延迟 |
+| SEC-03 | 高（部分修复，已在 0.4.2 发布） | 登录/注册/找回/TFA/恢复码 | `main` 已实现账号级失败锁定（`users.failed_login_count` + `locked_until`，密码与 TFA 共享计数、指数退避）；仍缺 IP 维度、未知用户名计数与注册/找回入口限流 | 反向代理/WAF 按 IP 限流，与内置账号锁定叠加 |
 | SEC-04 | 中 | `flask-exts/docs/configure.rst` vs 代码 | `TFA_EXEMPT_ENDPOINTS` 有文档但未实现 | 实现该配置，或从文档移除并说明 |
 | SEC-05 | 中（已修复） | `usercenter/forms/register.py` | 注册邮箱已使用 `DataRequired()` + `Email()` + `Length(max=254)`；`test_register_rejects_invalid_email` 覆盖非法格式且不创建用户 | 保持 `Email()` 与改邮箱表单一致；投递性检查默认关闭 |
 | SEC-06 | 中 | 密码策略/表单 | 快照未见常见或泄露密码阻断；服务端 API 可绕过表单长度限制（当前未复核） | 按适用标准评估阻断要求并统一校验；不默认要求字符组合 |
@@ -884,13 +921,13 @@ server {
 | SEC-10 | 低-中 | 注册/改邮箱 | 重复邮箱/用户名可枚举 | 统一提示或接受取舍并记录 |
 | SEC-11 | 中 | 全局 | 无安全审计日志（登录失败、TFA 失败、密码变更、管理员操作） | 接入结构化日志/审计系统 |
 | SEC-12 | 中 | 部署 | 未默认设置安全 Cookie/响应头 | 按 3.3/7.4 显式配置 |
-| SEC-13 | 低 | `user_view.py::recovery` | 恢复码同时接受哈希校验与明文 `compare_digest` | 移除明文兼容分支（如无历史数据） |
+| SEC-13 | 低（已在 0.4.2 修复） | `user_view.py::recovery` | 只接受 `hasher.verify` 的哈希校验，明文兼容分支已移除；`test_plaintext_recovery_codes_are_rejected` 覆盖 | 已发布版本仍接受明文兼容值 |
 | SEC-14 | 低 | 用户模型 | `status`、`expired_at` 字段未使用 | 实现或移除，避免误以为已生效 |
 | SEC-15 | 信息 | Admin 视图 | 匿名访问模型视图返回 403，不是登录重定向 | 需要跳转登录时加 `@login_required` |
-| SEC-16 | 中 | `usercenter/user_view.py::enable_tfa` | 关闭 TFA 只清 `totp_secret`，不清 `recovery_codes`；重新启用后旧恢复码仍可能有效 | 禁用/重绑时清空恢复码并强制重新生成 |
-| SEC-17 | 中-高 | `emailer/smtp.py::SmtpSSL` | HEAD 中未显式传入 SSL context；默认证书/主机名校验行为依赖 Python 版本，未在本轮核验 | 显式传入 `ssl.create_default_context()`，并补跨支持版本测试 |
-| SEC-18 | 中（已修复，待发布） | `emailer/base.py::send_email` | 找不到 sender 时只记录 `type` 与脱敏收件人，不输出链接/令牌；`test_missing_sender_warning_redacts_payload` 覆盖 | 已发布版本仍需限制日志访问并过滤敏感载荷 |
-| SEC-19（V-01 别名） | 中（已修复，待发布） | `admin/model/view.py::ajax_update` | `can_edit=False` 时返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需将 `column_editable_list` 置空 |
+| SEC-16 | 中（已在 0.4.2 修复） | `usercenter/user_view.py::enable_tfa`、`rebind_tfa` | 关闭 TFA 与重绑 authenticator 均清空 `recovery_codes`；`test_tfa`、`test_recovery` 覆盖 | 已发布版本旧恢复码仍可能有效 |
+| SEC-17 | 中-高（已在 0.4.2 修复） | `emailer/smtp.py::SmtpSSL` | 显式传入 `ssl.create_default_context()`（`CERT_REQUIRED` + `check_hostname=True`）；TLS 失败包装与 context 开关均有测试覆盖 | 私有 CA 配置到信任库；监控发信失败率 |
+| SEC-18 | 中（已在 0.4.2 修复） | `emailer/base.py::send_email` | 找不到 sender 时只记录 `type` 与脱敏收件人，不输出链接/令牌；`test_missing_sender_warning_redacts_payload` 覆盖 | 已发布版本仍需限制日志访问并过滤敏感载荷 |
+| SEC-19（V-01 别名） | 中（已在 0.4.2 修复） | `admin/model/view.py::ajax_update` | `can_edit=False` 时返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需将 `column_editable_list` 置空 |
 
 ## 12. 测试覆盖与缺口
 
@@ -970,6 +1007,7 @@ server {
 - [ ] `REMEMBER_COOKIE_*` 已设置
 - [ ] 数据库账号最小权限
 - [ ] SMTP 凭据在密钥管理系统中
+- [ ] SMTP 证书校验未被关闭（私有 CA 已加入信任库）
 
 ### 14.2 账号与权限
 
@@ -981,7 +1019,9 @@ server {
 
 ### 14.3 网络与限流
 
-- [ ] 登录/注册/找回/TFA/恢复码有限流
+- [ ] 登录/注册/找回/TFA/恢复码在反向代理层有限流（`limit_req_status 429`）
+- [ ] `USER_LOGIN_MAX_FAILURES` 与退避参数已按业务确认
+- [ ] CDN/代理后的真实 IP 已配置（`set_real_ip_from` / `real_ip_header`），否则限流会命中错桶
 - [ ] WAF/反向代理已配置
 - [ ] 安全响应头已配置（CSP、HSTS、X-Frame-Options、nosniff、Referrer-Policy）
 - [ ] 错误页不泄露堆栈/配置

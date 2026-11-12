@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（首批 49 条） |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-12 |
-> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-13 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`testing.md`（测试）、`demo.md`（示例）、`security.md`（安全）；View/Admin 见 `spec.md` 第 10 章 |
 >
@@ -299,8 +299,8 @@ REQ-<领域>-<序号>
 - **行为**：验证第二因子；成功后 `login_user()`（不设置 `force`）；清理 pending；设置 `tfa_verified`；重定向 `next`
 - **输出/副作用**：session 中有 `_user_id` 与 `tfa_verified`；恢复码登录消耗一个恢复码
 - **错误**：错误验证码不建立 session，提示 `Invalid code`
-- **不变量**：第二因子失败不改变登录状态；恢复码只能使用一次
-- **验收**：`testing.md` TC-SEC-016/TC-SEC-017；`test_tfa`、`test_recovery`
+- **不变量**：第二因子失败不改变登录状态；恢复码只能使用一次；恢复码只接受哈希值，明文值必须被拒绝；禁用 TFA 或重绑 authenticator 时恢复码必须清空，旧码不得继续有效
+- **验收**：`testing.md` TC-SEC-016/TC-SEC-017；`test_tfa`、`test_recovery`、`test_plaintext_recovery_codes_are_rejected`
 - **关联**：`security.md` 8.3
 
 ### REQ-AUTH-005 密码变更使旧会话失效
@@ -366,6 +366,17 @@ REQ-<领域>-<序号>
 - **验收**：`testing.md` TC-AUTH-020；`tests/integration/usercenter/test_user_view.py::test_disabling_account_invalidates_existing_session`
 - **关联**：`security.md` 3.2/3.5；`REQ-AUTH-009`
 
+### REQ-AUTH-011 连续失败登录触发账号锁定
+
+- **前置**：用户存在；失败可来自密码错误或第二因子验证码错误
+- **输入**：登录表单、`/user/verify_tfa/`、`/user/recovery/`
+- **行为**：每次失败在同一用户行上累加 `failed_login_count`；达到 `USER_LOGIN_MAX_FAILURES`（默认 5）后设置 `locked_until`，延迟从 `USER_LOGIN_LOCKOUT_BASE_SECONDS`（默认 60 秒）起按 2 的幂增长，上限 `USER_LOGIN_LOCKOUT_MAX_SECONDS`（默认 3600 秒）；锁定期间不做密码校验，直接拒绝；只有完整登录成功或成功重置密码才清零
+- **输出/副作用**：登录页提示 `Too many failed sign-in attempts. Try again in ...`；pending TFA 状态被清理；锁定不修改 `is_active`
+- **错误**：`AccountLockedError`（`field="username"`，带 `retry_after` 秒数）；锁定参数非法时抛 `ValueError`
+- **不变量**：按账号而非按 IP 计数；共享同一数据库的多进程/多实例结果一致；自动过期，不需要管理员解锁；锁定期内密码正确也拒绝；自定义 `UserStore` 必须声明并实现 `login_user_by_username_password`、`is_locked`、`record_login_failure`、`clear_login_failures`，缺失时无法实例化
+- **验收**：`testing.md` TC-AUTH-031~TC-AUTH-033；`tests/integration/userstore/test_sqla_userstore.py`、`tests/integration/usercenter/test_user_view.py::test_repeated_failed_logins_lock_the_account`、`test_failed_tfa_codes_lock_the_account`、`test_password_reset_clears_lockout`
+- **关联**：`security.md` 8.5/11（SEC-03）；`REQ-AUTH-009`
+
 ## 6. 授权
 
 ### REQ-AUTHZ-001 admin 角色允许访问 Admin
@@ -420,7 +431,7 @@ REQ-<领域>-<序号>
 - **verification**：`passed`（`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied`；全套 260 passed, 1 skipped）
 - **本轮实现观察**：`admin + is_active=False` 访问 Admin 视图返回 403；active admin 仍可访问；公开 `allow_access` 视图行为不变。
 - **验收**：`testing.md` TC-SEC-022；`tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user`、`tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`
-- **关联**：`security.md` 4.3；`spec.md` 第 7 章；`SEC-01`（已修复，待发布）
+- **关联**：`security.md` 4.3；`spec.md` 第 7 章；`SEC-01`（已在 0.4.2 修复）
 
 ### REQ-AUTHZ-006 role_need 与 super_admin
 
@@ -498,7 +509,7 @@ REQ-<领域>-<序号>
 - **输出/副作用**：表单错误
 - **错误**：邮箱格式错误
 - **不变量**：非法邮箱不得创建用户，也不得触发验证或重置邮件
-- **实现观察**（当前 `main`，v0.4.1 之后）：`RegisterForm.email` 使用 `DataRequired()`、`Email()` 与 `Length(max=254)`；`Email()` 通过 `email-validator` 做语法校验，不启用投递性检查
+- **实现观察**（`0.4.2`）：`RegisterForm.email` 使用 `DataRequired()`、`Email()` 与 `Length(max=254)`；`Email()` 通过 `email-validator` 做语法校验，不启用投递性检查
 - **验收**：`tests/integration/usercenter/test_user_view.py::test_register_rejects_invalid_email`；非法邮箱返回表单错误且不创建用户；全量 246 passed, 1 skipped
 - **关联**：`security.md` SEC-05（已修复）、`testing.md` 第 7.7 节
 
@@ -734,7 +745,7 @@ REQ-<领域>-<序号>
 - **verification**：`passed`（`test_ajax_update_requires_can_edit`；全套 260 passed, 1 skipped）
 - **本轮实现观察**：`can_edit=False` 且配置 `column_editable_list` 时，AJAX 更新返回 403，数据库记录保持不变；`column_editable_list` 为空时仍返回 404。
 - **验收**：`testing.md` TC-ADMIN-040；`tests/integration/admin/sqla/test_actions.py::test_ajax_update_requires_can_edit`
-- **关联**：`spec.md` 第 10.16 节 V-01、`security.md` SEC-19（均已修复，待发布）
+- **关联**：`spec.md` 第 10.16 节 V-01、`security.md` SEC-19（均已在 0.4.2 修复）
 
 ### REQ-ADMIN-011 列表 URL 正确编码
 
@@ -804,7 +815,7 @@ REQ-<领域>-<序号>
 
 - [扩展生命周期](#3-扩展生命周期)：`REQ-EXT-003`、`REQ-EXT-004`
 - [数据库与查询](#4-数据库与查询)：`REQ-DATA-001`、`REQ-DATA-002`
-- [认证与会话](#5-认证与会话)：`REQ-AUTH-001`、`REQ-AUTH-003`、`REQ-AUTH-004`、`REQ-AUTH-009`、`REQ-AUTH-010`
+- [认证与会话](#5-认证与会话)：`REQ-AUTH-001`、`REQ-AUTH-003`、`REQ-AUTH-004`、`REQ-AUTH-009`、`REQ-AUTH-010`、`REQ-AUTH-011`
 - [授权](#6-授权)：`REQ-AUTHZ-005`
 - [注册与邮箱验证](#7-注册与邮箱验证)：`REQ-REG-001`、`REQ-REG-006`
 - [密码重置](#8-密码重置)：`REQ-RESET-001`、`REQ-RESET-002`

@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-11 |
-> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-13 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
 > | 适用仓库 | `flask-exts` |
 > | 配套文档 | `requirements.md`（契约）、`spec.md`（实现、Admin、插件与数据库专题）、`security.md`（安全）、`testing.md`（验证）、`demo.md`（示例） |
 
@@ -154,15 +154,19 @@ POST /new/ | /edit/
 
 ```text
 POST /user/login/
+  → 锁定未过期? → 提示剩余时间，不校验密码
   → 校验密码
-  → is_active?
-      ├─ 否 → 提示禁用，不建立会话
-      └─ 是 → tfa_enabled?
-            ├─ 否 → login_user → 重定向
-            └─ 是 → session[pending_tfa_user_id] → /user/verify_tfa/
+      ├─ 失败 → failed_login_count + 1（达到阈值写 locked_until）→ 统一错误
+      └─ 成功 → is_active?
+            ├─ 否 → 提示禁用，不建立会话
+            └─ 是 → tfa_enabled?
+                  ├─ 否 → login_user → 清零失败计数 → 重定向
+                  └─ 是 → session[pending_tfa_user_id] → /user/verify_tfa/
 POST /user/verify_tfa/
+  → 锁定未过期 / pending 无效 → 清理 pending → 登录页
   → 校验 TOTP/恢复码
-  → login_user → 清理 pending
+      ├─ 失败 → failed_login_count + 1（与密码失败共享）
+      └─ 成功 → login_user → 清理 pending → 清零失败计数
 每个请求加载会话：
   → user_loader → is_active?
       ├─ 否 → 清除 `_user_id` / remember Cookie → 匿名
@@ -190,6 +194,7 @@ POST /user/verify_tfa/
 | 登录状态 | Flask signed session | 浏览器会话 | `_user_id` 含密码指纹 |
 | TFA pending/verified | Flask session | 登录流程 | pending 不等于已登录 |
 | TOTP secret | `users.totp_secret` | 持久化 | AES-GCM 加密 |
+| 失败登录计数/锁定 | `users.failed_login_count` / `users.locked_until` | 持久化；锁定到期自动失效 | 账号级，与 IP 无关，跨进程共享 |
 | 恢复码 | `users.recovery_codes` | 持久化 | 哈希存储 |
 | 邮箱/重置令牌 | URL + 签名载荷 | 短时有效 | 载荷含 id/email hash/password hash |
 | CSRF token | session + `g` | 请求/会话 | 派生密钥签名 |
@@ -281,7 +286,7 @@ ADR-<序号>: <决策标题>
 - **关联文档**：[`security.md` 第 2.2 节](./security.md#22-密钥派生)。
 
 #### ADR-004: 依赖基线提升为 Python >=3.11, WTForms >=3.3, SQLAlchemy >=2.1
-- **状态**：accepted（2026-11-11 维护者确认；已在 v0.4.1 实施）
+- **状态**：accepted（2026-11-11 维护者确认；已在 v0.4.2 实施）
 - **日期**：2026-11-11
 - **背景**：WTForms 3.3.x（3.3.0/3.3.1/3.3.2）的上游 `Requires-Python` 均为 `>=3.11`；SQLAlchemy 2.1 系列（抽查 2.1.0/2.1.8）的上游 `Requires-Python` 也为 `>=3.11`。同时 WTForms 3.3 将 choice 迭代结果从裸元组改为 `Choice`/`SelectChoice` 对象，对 tuple choices 发出弃用告警，并调整了 `FieldList` 条目命名。项目当前只在 SQLAlchemy 2.1.8 上验证，为避免长期维护 2.0 与 2.1 两套行为路径，选择同时提升 WTForms 与 SQLAlchemy 的下限。
 - **决策**：项目最低 Python 版本提升为 3.11；`pyproject.toml` 声明 `requires-python = ">=3.11"`、`WTForms>=3.3.2`、`SQLAlchemy>=2.1`，并移除 Python 3.10 classifier；测试文档与建议的 CI 矩阵只覆盖 3.11/3.12/3.13，SQLAlchemy 只覆盖 2.1.x。字段与 widget 按 WTForms 3.3 的 `Choice`/`SelectChoice` 行为实现，并在 `ChoiceField` 入口把 legacy tuple/dict choices 规范化为 `SelectChoice`，以消除 3.3 的弃用告警；不保留对 WTForms 3.2 及更早版本、SQLAlchemy 2.0 及更早版本的行为分支。

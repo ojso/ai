@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-12 |
-> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；测试清单和统计已复核） |
+> | 最后更新 | 2026-11-13 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核） |
 > | 适用仓库 | `flask-exts` |
 > | 文档驱动 | `architecture.md`：架构；`spec.md`：设计和实现，第 10 章涵盖 View/Admin 路由、ModelView、DataBackend、Inline、AJAX、导出 |
 > | 行为契约 | `requirements.md`：`REQ-*`、验收标准、追溯 |
@@ -110,8 +110,8 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 | 指标 | 当前值 | 说明 |
 | --- | --- | --- |
 | 测试文件 | 48 个 `test_*.py` | 全部位于 `tests/unit/` 与 `tests/integration/` |
-| 测试函数 | 225 个 | 以 `def test_...` 统计 |
-| 断言 | 约 996 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
+| 测试函数 | 235 个 | 以 `def test_...` 统计 |
+| 断言 | 约 1059 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
 | 测试框架 | pytest | `pyproject.toml` 配置 |
 | 覆盖率工具 | `pytest-cov` / `coverage` | 已列入 `dev` 组；`[tool.coverage.run] source = ["src/flask_exts"]` 只统计库代码；已测定基线，CI 每轮报告覆盖率，尚无 `fail-under` 门槛 |
 | E2E 目录 | 无 | `tests/e2e/` 尚未创建 |
@@ -119,7 +119,7 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 | 浏览器测试 | 无 | 未引入 Selenium/Playwright |
 | 基准工具 | 无 | 未引入 `pytest-benchmark` |
 | 数据工厂 | 无 | 未引入 `factory-boy` / `faker` |
-| 最近完整测试运行 | 260 passed, 1 skipped | 2026-11-12；Python 3.13.5；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`（v0.4.1 之后的 3 个提交：注册邮箱、C2、C5/C6、C7、AUTHZ-005、ADMIN-010、EXT-004、AUTH-009/AUTH-010、`requires_active` 移除、SEC-18 日志脱敏、CI/工具链）；跳过 `test_smtp.py`，未配置 `REAL_EMAIL_SENDER` |
+| 最近完整测试运行 | 274 passed | 2026-11-13；Python 3.13.5；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；无跳过用例 |
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -140,14 +140,14 @@ addopts = "-ra --strict-markers --strict-config"
 | `unit/extension_core` | 32 | `test_registry.py`、`test_manager.py` | 覆盖依赖排序、循环依赖、幂等、关闭、异常隔离、内置扩展装配 |
 | `unit/admin` | 23 | `test_mockview.py`、`test_pagination.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py` | 覆盖视图元数据、格式化、分页 URL 编码，偏“配置读取” |
 | `unit/forms` | 23 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py` | 覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补 |
-| `integration/usercenter` | 17 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、非法注册邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、改密码、找回/重置、恢复码 |
+| `integration/usercenter` | 18 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、非法注册邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、改密码、找回/重置、恢复码 |
 | `unit/datastore` | 14 | `test_db.py`、`test_query.py` | 覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖 |
 | `unit/security` | 10 | `tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py` | 授权包括 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行 |
 | `integration/builtin_extensions` | 8 | `test_login.py`、`test_admin_views.py` | 覆盖 JWT、蓝图、默认视图 |
 | `unit/builtin_extensions` | 8 | `test_babel.py`、`test_exts.py`、`test_frontend.py` | 覆盖 Babel、扩展注册、Jinja 全局 |
 | `integration/security` | 5 | `tests/integration/security/test_core.py` | 覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效 |
 | `integration/userstore` | 3 | `test_sqla_userstore.py` | 覆盖模型注册、基础 CRUD、角色；`get_users`/`remove_user` 未覆盖 |
-| `unit/emailer` | 3 | `test_base.py`、`test_smtp.py` | 基础信号路径、缺失 sender 的日志脱敏；SMTP 与错误路径仍可补 |
+| `unit/emailer` | 3 | `test_base.py`、`test_smtp.py` | 基础信号路径、缺失 sender 的日志脱敏、校验证书/主机名的 context、发送头字段与 TLS 错误包装 |
 | `unit/frontend` | 9 | `test_plugin_manager.py`、`test_base.py`、宏测试 | 覆盖注册、排序、循环依赖、资源拼接 |
 | `commands` | 0 | 无 | CLI 完全未测试 |
 
@@ -190,7 +190,7 @@ addopts = "-ra --strict-markers --strict-config"
 
 ### 1.5 数据快照与重新统计
 
-本文的 48 / 225 / 996 已按 2026-11-12 的 HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b` 重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 48 / 235 / 1059 已按 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -1047,7 +1047,7 @@ class UserFactory(factory.Factory):
 | TC-SEC-013 | 授权：普通用户/无角色 | U | P0 | 现有 | 拒绝 |
 | TC-SEC-014 | `allow_access` 公开视图 | U | P0 | 现有 | 允许 |
 | TC-SEC-016 | TFA 生成/校验 | U | P0 | 现有（弱） | 正确码通过，错误码失败 |
-| TC-SEC-017 | TFA 恢复码 | U | P0 | 待补 | 一次性使用/失效 |
+| TC-SEC-017 | TFA 恢复码 | I | P0 | 现有 | 只存哈希、一次性使用、明文值被拒绝；禁用/重绑后旧码失效；`test_plaintext_recovery_codes_are_rejected`（对应 SEC-13/SEC-16） |
 | TC-SEC-018 | TFA 待验证不能访问 | I | P0 | 现有 | 重定向/401 |
 | TC-SEC-019 | 密码变更使会话失效 | I | P0 | 现有 | 旧 session 失效 |
 | TC-SEC-020 | 安全重定向 | U | P0 | 现有 | 外部/畸形 URL 拒绝 |
@@ -1064,8 +1064,8 @@ class UserFactory(factory.Factory):
 - SEC-04：核实 `TFA_EXEMPT_ENDPOINTS` 是否实现，若实现则补测试，否则从配置文档移除并说明。
 - SEC-07：设计密钥轮换及 TOTP 数据迁移测试；快照中迁移实现待补。
 - SEC-12：配置安全 Cookie 后断言 `Set-Cookie` 的 `Secure`、`HttpOnly` 和 `SameSite`。
-- SEC-16：禁用、重新启用 TFA 后断言旧恢复码被拒。
-- SEC-17：模拟 SMTP，确认使用校验证书与主机名的 SSL context。
+- SEC-16：已覆盖——禁用 TFA 与重绑 authenticator 后 `recovery_codes` 被清空，旧码无法使用；重新生成后为全新哈希（`test_tfa`、`test_recovery`）。
+- SEC-17：已覆盖——断言 `SmtpSSL` 传给 `SMTP_SSL` 的 context 为 `CERT_REQUIRED` 且 `check_hostname=True`，并验证 TLS 错误包装为 `SmtpError`、消息头字段与返回值（`tests/unit/emailer/test_smtp.py`）。
 - SEC-18：模拟 logger，断言 warning 不含令牌和链接（已实现：`test_missing_sender_warning_redacts_payload`）。
 - SEC-19 / V-01：`can_edit=False` 且配置 `column_editable_list` 时，断言 `ajax_update` 被拒；两个编号指向同一问题。
 
@@ -1111,7 +1111,7 @@ class UserFactory(factory.Factory):
 | TC-AUTH-014 | 找回密码 | I/E | P0 | 现有 | 发邮件 |
 | TC-AUTH-015 | 重置密码 | I/E | P0 | 现有 | 新密码生效 |
 | TC-AUTH-016 | 恢复码 | I | P0 | 现有 | 登录成功/码失效 |
-| TC-AUTH-017 | TFA 启用/关闭 | I | P0 | 现有（部分） | `tfa_enabled` 变化 |
+| TC-AUTH-017 | TFA 启用/关闭 | I | P0 | 现有 | `tfa_enabled` 变化；关闭时清空 `totp_secret` 与 `recovery_codes` |
 | TC-AUTH-018 | TFA 登录完整流程 | E | P0 | 待补 | 密码→验证码→登录 |
 | TC-AUTH-019 | TFA 待验证不能绕过 | I | P0 | 现有 | 受保护页拒绝 |
 | TC-AUTH-020 | 禁用账号旧会话即时失效 | I | P0 | 现有 | 下一次请求 `user_loader` 返回 None、清除 `_user_id`；受保护页 302；重新启用后仍需登录 |
@@ -1119,6 +1119,9 @@ class UserFactory(factory.Factory):
 | TC-AUTH-022 | 重复提交/并发注册 | I | P2 | 待补 | 唯一约束生效 |
 | TC-AUTH-029 | 禁用账号拒绝登录 | I | P0 | 现有 | 正确密码但不建立 `_user_id`；提示账号已禁用 |
 | TC-AUTH-030 | 禁用账号不能完成 pending TFA | I | P1 | 现有 | pending 被清理，重定向登录 |
+| TC-AUTH-031 | 连续密码失败触发锁定 | I | P0 | 现有 | 第 N 次失败后 `failed_login_count`/`locked_until` 写入；锁定期内正确密码也被拒；错误提示含剩余时间 |
+| TC-AUTH-032 | 第二因子失败计入同一锁定 | I | P0 | 现有 | TFA 连续错误后账号锁定，pending 被清理，GET 校验页重定向登录 |
+| TC-AUTH-033 | 锁定过期与成功登录清零 | U/I | P0 | 现有 | 过期后可登录；成功登录、成功重置密码把两列清零；退避按 2 的幂增长并被上限截断 |
 
 ### 7.8 Emailer
 
@@ -1128,7 +1131,7 @@ class UserFactory(factory.Factory):
 | TC-EMAIL-002 | 缺少 `type` | U | P1 | 待补 | warning，不发送 |
 | TC-EMAIL-003 | 未知 sender | U | P1 | 现有 | warning 不抛；记录 type + 脱敏收件人，不含令牌/链接 |
 | TC-EMAIL-004 | SMTP 成功（mock） | U | P1 | 现有（基础） | 调用成功 |
-| TC-EMAIL-005 | SMTP 异常 | U | P1 | 待补 | `SmtpError` 处理 |
+| TC-EMAIL-005 | SMTP 异常 | U | P1 | 现有 | `SMTP_SSL` 抛出证书校验错误时包装为 `SmtpError`，`__cause__` 保留原异常 |
 | TC-EMAIL-006 | 重复注册 sender | U | P1 | 待补 | `ValueError` |
 | TC-EMAIL-007 | 默认 sender 配置存在/缺失 | U | P1 | 待补 | 注册/不注册 |
 | TC-EMAIL-008 | 验证邮件/重置邮件内容 | I | P1 | 待补 | 主题/链接/收件人 |
@@ -1625,7 +1628,7 @@ show_missing = true
 | 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-010 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 261 passed, 1 skipped；全套 34.32s；8865 statements, 857 missed |
 | 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 `requires_active` 移除 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 259 passed, 1 skipped；全套 33.09s；8833 statements, 855 missed |
 | 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与覆盖率口径修正 | 83% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 259 passed, 1 skipped；全套 36.72s；5276 statements, 905 missed |
-| 2026-11-12 | `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`（v0.4.1 之后） | 83% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 260 passed, 1 skipped；全套 34.34s；5282 statements, 903 missed |
+| 2026-11-13 | `445b03d1fe6c59cd53405c8187de968c687a2909` | 84% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 274 passed；全套 49.16s；5361 statements, 884 missed |
 
 规则：
 
@@ -1763,9 +1766,9 @@ python -m pytest -q tests/performance -m performance
 #### Phase 1：Unit 补强（第 1 周）
 
 - [ ] TC-DATA-012/TC-DATA-013/TC-DATA-014：Query 搜索语义、过滤操作符、一对多计数
-- [ ] TC-SEC-003/TC-SEC-004/TC-SEC-006/TC-SEC-007/TC-SEC-017：加密、序列化过期/篡改、TFA 恢复码
+- [ ] TC-SEC-003/TC-SEC-004/TC-SEC-006/TC-SEC-007：加密、序列化过期/篡改
 - [ ] TC-USER-012/TC-USER-013：`get_users`、`remove_user`
-- [ ] TC-EMAIL-002/TC-EMAIL-003/TC-EMAIL-005/TC-EMAIL-006/TC-EMAIL-007：Emailer 错误路径
+- [ ] TC-EMAIL-002/TC-EMAIL-006/TC-EMAIL-007：Emailer 错误路径（TC-EMAIL-005 已由 SMTP 证书测试覆盖）
 - [ ] TC-CLI-001～TC-CLI-006：Commands（含 `test_cli_runner` 示例）
 - [ ] TC-FORM-010/TC-FORM-012/TC-FORM-015：CSRF 边界、formdata、InlineModelField
 - [ ] TC-DATA-019～TC-DATA-027：事务、级联、外键、唯一约束

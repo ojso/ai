@@ -4,8 +4,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-12 |
-> | 数据快照 | 2026-11-12（发布版本 `0.4.1`；HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；v0.4.1 之后的 `main` 已包含 C2 计数语义、C5/C6、C7、V-01、V-02、C11、AUTH-009/AUTH-010、`requires_active` 移除、SEC-18 日志脱敏） |
+> | 最后更新 | 2026-11-13 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 C2 计数语义、C5/C6、C7、V-01、V-02、C11、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定） |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
 
 ## 目录
@@ -1159,7 +1159,7 @@ admin.register_view(jsonview)
 | C7 | 低（已删除） | `datastore/sqla/query_builders/` | 运行时未使用，和 `Query` 形成两套抽象 | 已移除整个包 |
 | C10 | 低 | 扩展管理器的晚注册路径 / `AdminExtension.post_init` | 新扩展会执行自身初始化，但不会重跑 Admin 的视图扫描；晚注册扩展提供的 `AdminViewMixin` 不会自动被收集 | 文档化或提供显式刷新机制 |
 | C11 | 中（已修复） | `extension_core/registry.py::ExtensionRegistry.shutdown_all` | 逐扩展捕获普通 `Exception`、记录 warning 并继续逆序关闭；`BaseException` 不被吞掉 | 保持异常隔离与状态清理测试 |
-| V-01 | 中（已修复，待发布） | `admin/model/view.py::ajax_update` | `can_edit=False` 时在读取请求体前返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需用 `column_editable_list=()` 作为临时阻断 |
+| V-01 | 中（已在 0.4.2 修复） | `admin/model/view.py::ajax_update` | `can_edit=False` 时在读取请求体前返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需用 `column_editable_list=()` 作为临时阻断 |
 | V-02 | 低（已修复） | `admin/model/handlers/row_actions.py` / `bulk_actions.py` | 已重命名为 `RowActionHandler` / `BulkActionHandler`，方法改为 `get_bulk_actions()` / `get_bulk_action()` | 保持新命名 |
 
 其他注意：
