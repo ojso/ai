@@ -5,30 +5,8 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 C2 计数语义、C5/C6、C7、V-01、V-02、C11、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定） |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 CR-002 计数语义、CR-005/CR-006、CR-007、SEC-19、CR-012、CR-011、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定） |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
-
-## 目录
-
-### 第一部分：设计总纲与背景
-
-- [1. 项目定位](#1-项目定位)
-- [2. 文档职责边界](#2-文档职责边界)
-  - [2.1 扩展专题与归属](#21-扩展专题与归属)
-- [3. 设计目标](#3-设计目标)
-  - [3.1 首版缺口与优先级（历史快照）](#31-首版缺口与优先级历史快照)
-- [4. 关键设计取舍与架构定位](#4-关键设计取舍与架构定位)
-- [5. 当前结构概览](#5-当前结构概览)
-- [6. 当前状态判断](#6-当前状态判断)
-- [7. 关键风险与注意事项](#7-关键风险与注意事项)
-- [8. 适合的阅读顺序](#8-适合的阅读顺序)
-- [9. 设计总纲小结](#9-设计总纲小结)
-
-### 第二部分：核心领域实现规范
-
-- [10. View 与 Admin 专题](#10-view-与-admin-专题)
-- [11. 插件与扩展机制](#11-插件与扩展机制)
-- [12. 数据库与持久化](#12-数据库与持久化)
 
 ## 1. 项目定位
 
@@ -76,7 +54,7 @@ Flask-Exts 是一个面向 Flask 的扩展集合，用于把常见的 Web 基础
 
 ### 3.1 首版缺口与优先级（历史快照）
 
-本节记录 v0.1 初始规划，不代表当前缺口或优先级。现行缺口导航见 `README.md` 第 8 节；具体状态以对应权威文档中的证据为准。
+本节记录 v0.1 初始规划，不代表当前缺口或优先级。现行缺口导航见 `README.md` 第 11 节；具体状态以对应权威文档中的证据为准。
 
 ## 4. 关键设计取舍与架构定位
 
@@ -174,7 +152,7 @@ flask_exts/
 
 ## 10. View 与 Admin 专题
 
-> 本章维护 View、ModelView、DataBackend、Inline、AJAX、导出、模板及相关已知问题。本轮按 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核对了 C1/C2/C10/V-01 等指定观察；未运行相应缺陷复现测试。安全边界以 `security.md` 为准，测试策略以 `testing.md` 为准。
+> 本章维护 View、ModelView、DataBackend、Inline、AJAX、导出、模板及相关已知问题。本轮按 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 静态核对了 CR-001/CR-002/CR-010/SEC-19 等指定观察；未运行相应缺陷复现测试。安全边界以 `security.md` 为准，测试策略以 `testing.md` 为准。
 
 ### View 与 Admin 章节导航
 
@@ -209,14 +187,12 @@ from flask_exts.admin.sqla.view import SqlaModelView
 
 from .models.author import Author
 
-
 class AuthorView(SqlaModelView):
     column_list = ("id", "name", "email")
     column_searchable_list = ("name", "email")
     column_sortable_list = ("id", "name")
     column_default_sort = ("id", True)
     page_size = 20
-
 
 authorview = AuthorView(Author)
 ```
@@ -239,13 +215,11 @@ http://localhost:5000/admin/author/
 ```python
 from flask_exts.admin import View, expose_url, login_required
 
-
 class AboutView(View):
     @login_required
     @expose_url("/")
     def index(self):
         return self.render_string("<h1>About</h1>")
-
 
 aboutview = AboutView(name="About", url="about")
 admin.register_view(aboutview)
@@ -260,10 +234,8 @@ admin.register_view(aboutview)
 ```python
 from flask_exts.admin.sqla.inline.inline_model_convert import InlineForm
 
-
 class AuthorView(SqlaModelView):
     inline_models = (InlineForm(Post, form_columns=("title", "text", "date")),)
-
 
 class PostView(SqlaModelView):
     ajax_refs = {
@@ -271,7 +243,7 @@ class PostView(SqlaModelView):
     }
 ```
 
-> Inline 子模型再配置 `ajax_refs` 会触发已知缺陷 C1（见第 10.16 节）。
+> Inline 子模型再配置 `ajax_refs` 会触发已知缺陷 CR-001（见第 10.16 节）。
 
 ### 10.1 View 体系总览
 
@@ -285,14 +257,29 @@ Admin
                  └─ SqlaBackend（SQLAlchemy 实现）
 ```
 
-| 层 | 职责 | 不负责 |
-| --- | --- | --- |
-| `Admin` | 视图集合、菜单、Blueprint 注册、渲染上下文 | 具体模型查询 |
-| `View` | 路由、访问控制、模板渲染、自定义动作 | 模型 CRUD |
-| `ModelView` | 列/筛选/排序/搜索/表单/分页/导出配置与请求编排 | 数据源细节 |
-| `DataBackend` | 列/过滤/表单脚手架、列表/单条/CRUD、主键 | 路由、模板 |
-| `SqlaModelView` | 用 `SqlaBackend` 实现 SQLAlchemy 模型视图 | 非 SQLAlchemy 数据源 |
-| `SqlaBackend` | SQL 查询、自动 JOIN、事务、Inline、AJAX | 视图配置解析 |
+- `Admin`
+  - 职责：视图集合、菜单、Blueprint 注册、渲染上下文
+  - 不负责：具体模型查询
+
+- `View`
+  - 职责：路由、访问控制、模板渲染、自定义动作
+  - 不负责：模型 CRUD
+
+- `ModelView`
+  - 职责：列/筛选/排序/搜索/表单/分页/导出配置与请求编排
+  - 不负责：数据源细节
+
+- `DataBackend`
+  - 职责：列/过滤/表单脚手架、列表/单条/CRUD、主键
+  - 不负责：路由、模板
+
+- `SqlaModelView`
+  - 职责：用 `SqlaBackend` 实现 SQLAlchemy 模型视图
+  - 不负责：非 SQLAlchemy 数据源
+
+- `SqlaBackend`
+  - 职责：SQL 查询、自动 JOIN、事务、Inline、AJAX
+  - 不负责：视图配置解析
 
 设计要点：
 
@@ -305,17 +292,15 @@ Admin
 
 `ModelView` 本身很大，但把职责拆给了多个 Handler：
 
-| Handler | 职责 |
-| --- | --- |
-| `PaginationHandler` | 解析分页/排序/搜索参数，生成列表 URL |
-| `FilterHandler` | 解析、应用、生成筛选参数 |
-| `FormHandler` | 创建/编辑/删除/列表表单 |
-| `RowActionHandler` | 单行操作按钮（查看/编辑/删除/链接） |
-| `BulkActionHandler` | 选中多行的批量操作（`@expose_action`） |
-| `ExportHandler` | CSV/tablib 导出 |
-| `ValueHandler` | 列表/详情/导出的值格式化 |
+- `PaginationHandler`：解析分页/排序/搜索参数，生成列表 URL
+- `FilterHandler`：解析、应用、生成筛选参数
+- `FormHandler`：创建/编辑/删除/列表表单
+- `RowActionHandler`：单行操作按钮（查看/编辑/删除/链接）
+- `BulkActionHandler`：选中多行的批量操作（`@expose_action`）
+- `ExportHandler`：CSV/tablib 导出
+- `ValueHandler`：列表/详情/导出的值格式化
 
-> **命名说明**：`RowActionHandler` 负责“单行按钮”，`BulkActionHandler` 负责“批量操作”；文件分别为 `row_actions.py` / `bulk_actions.py`，见第 10.16 节 V-02。
+> **命名说明**：`RowActionHandler` 负责“单行按钮”，`BulkActionHandler` 负责“批量操作”；文件分别为 `row_actions.py` / `bulk_actions.py`，见第 10.16 节 CR-012。
 
 `ModelView` 通过显式转发方法暴露 Handler 能力（如 `get_list_args()`、`get_list_url()`），转发方法本身不在此复制。
 
@@ -379,11 +364,9 @@ View(
 def index(self): ...
 ```
 
-| 装饰器 | 作用 |
-| --- | --- |
-| `expose_url(url, methods=("GET",))` | 登记 URL 与允许方法 |
-| `login_required` | Flask-Login 包装，并标记 `_login_required` |
-| `expose_action(name, text, confirmation=None)` | 登记批量/行操作 |
+- `expose_url(url, methods=("GET",))`：登记 URL 与允许方法
+- `login_required`：Flask-Login 包装，并标记 `_login_required`
+- `expose_action(name, text, confirmation=None)`：登记批量/行操作
 
 **装饰器顺序**（自上而下）：
 
@@ -446,20 +429,18 @@ class ModelView(View):
 
 ##### 列与展示
 
-| 属性 | 说明 |
-| --- | --- |
-| `column_list` | 列表列；支持 `"author.email"` 点号路径 |
-| `column_details_list` | 详情列；默认同 `column_list` |
-| `column_export_list` | 导出列；默认同 `column_list` |
-| `column_labels` | `{字段: 显示名}` |
-| `column_descriptions` | `{字段: 描述}` |
-| `column_choices` | `{字段: {db_value: display_value}}` |
-| `column_formatters` | 列表列格式化器 |
-| `column_formatters_detail` | 详情列格式化器；默认回退到列表 |
-| `column_formatters_export` | 导出列格式化器；默认回退到列表 |
-| `column_type_formatters` | 按值类型格式化（列表） |
-| `column_type_formatters_detail` | 详情类型格式化 |
-| `column_type_formatters_export` | 导出类型格式化 |
+- `column_list`：列表列；支持 `"author.email"` 点号路径
+- `column_details_list`：详情列；默认同 `column_list`
+- `column_export_list`：导出列；默认同 `column_list`
+- `column_labels`：`{字段: 显示名}`
+- `column_descriptions`：`{字段: 描述}`
+- `column_choices`：`{字段: {db_value: display_value}}`
+- `column_formatters`：列表列格式化器
+- `column_formatters_detail`：详情列格式化器；默认回退到列表
+- `column_formatters_export`：导出列格式化器；默认回退到列表
+- `column_type_formatters`：按值类型格式化（列表）
+- `column_type_formatters_detail`：详情类型格式化
+- `column_type_formatters_export`：导出类型格式化
 
 格式化优先级：
 
@@ -483,13 +464,11 @@ def type_formatter(view, value, name):
 
 ##### 筛选、排序、搜索
 
-| 属性 | 说明 |
-| --- | --- |
-| `column_filters` | 列名或 `BaseFilter` 实例 |
-| `column_sortable_list` | 可排序列；支持 `(label, path)`、`(label, (path1, path2))` |
-| `column_default_sort` | 字符串、`(column, desc)` 或 `[(column, desc), ...]` |
-| `column_searchable_list` | 可搜索列；支持点号路径 |
-| `column_editable_list` | 列表页可内联编辑的列 |
+- `column_filters`：列名或 `BaseFilter` 实例
+- `column_sortable_list`：可排序列；支持 `(label, path)`、`(label, (path1, path2))`
+- `column_default_sort`：字符串、`(column, desc)` 或 `[(column, desc), ...]`
+- `column_searchable_list`：可搜索列；支持点号路径
+- `column_editable_list`：列表页可内联编辑的列
 
 注意：
 
@@ -499,37 +478,74 @@ def type_formatter(view, value, name):
 
 ##### 表单
 
-| 属性 | 说明 |
-| --- | --- |
-| `form_columns` | 创建/编辑表单字段 |
-| `create_form_columns` | 仅创建表单字段；默认回退到 `form_columns` |
-| `form_excluded_columns` | 排除字段 |
-| `form_args` | WTForms 字段参数（label/validators/format 等） |
-| `form_widget_args` | 控件渲染参数（rows/readonly/data-* 等） |
-| `form_extra_fields` | 无模型列对应的额外字段 |
-| `form_choices` | `{字段: [(value, label), ...]}` |
-| `base_form_class` | 表单基类，默认 `FlaskForm` |
-| `ajax_refs` | AJAX 外键配置 |
-| `inline_models` | Inline 子模型配置 |
+- `form_columns`：创建/编辑表单字段
+- `create_form_columns`：仅创建表单字段；默认回退到 `form_columns`
+- `form_excluded_columns`：排除字段
+- `form_args`：WTForms 字段参数（label/validators/format 等）
+- `form_widget_args`：控件渲染参数（rows/readonly/data-* 等）
+- `form_extra_fields`：无模型列对应的额外字段
+- `form_choices`：`{字段: [(value, label), ...]}`
+- `base_form_class`：表单基类，默认 `FlaskForm`
+- `ajax_refs`：AJAX 外键配置
+- `inline_models`：Inline 子模型配置
 
 ##### 分页、权限、导出、模板
 
-| 属性 | 默认 | 说明 |
-| --- | --- | --- |
-| `page_size` | `20` | 默认页大小 |
-| `can_set_page_size` | `True` | 是否允许 `?page_size=` |
-| `page_size_options` | `(5, 10, 20, 50, 100)` | 允许的页大小白名单 |
-| `can_create` | `True` | 是否允许创建 |
-| `can_edit` | `True` | 是否允许编辑 |
-| `can_delete` | `True` | 是否允许删除 |
-| `can_export` | `False` | 是否启用导出 |
-| `export_max_rows` | `10000` | 导出最大行数 |
-| `export_types` | `("csv",)` | 导出格式 |
-| `action_disallowed_list` | `()` | 禁用的批量/行操作名 |
-| `list_template` | `admin/model/list.html` | 列表模板 |
-| `create_template` | `admin/model/create.html` | 创建模板 |
-| `edit_template` | `admin/model/edit.html` | 编辑模板 |
-| `details_template` | `admin/model/details.html` | 详情模板 |
+- `page_size`
+  - 默认：`20`
+  - 说明：默认页大小
+
+- `can_set_page_size`
+  - 默认：`True`
+  - 说明：是否允许 `?page_size=`
+
+- `page_size_options`
+  - 默认：`(5, 10, 20, 50, 100)`
+  - 说明：允许的页大小白名单
+
+- `can_create`
+  - 默认：`True`
+  - 说明：是否允许创建
+
+- `can_edit`
+  - 默认：`True`
+  - 说明：是否允许编辑
+
+- `can_delete`
+  - 默认：`True`
+  - 说明：是否允许删除
+
+- `can_export`
+  - 默认：`False`
+  - 说明：是否启用导出
+
+- `export_max_rows`
+  - 默认：`10000`
+  - 说明：导出最大行数
+
+- `export_types`
+  - 默认：`("csv",)`
+  - 说明：导出格式
+
+- `action_disallowed_list`
+  - 默认：`()`
+  - 说明：禁用的批量/行操作名
+
+- `list_template`
+  - 默认：`admin/model/list.html`
+  - 说明：列表模板
+
+- `create_template`
+  - 默认：`admin/model/create.html`
+  - 说明：创建模板
+
+- `edit_template`
+  - 默认：`admin/model/edit.html`
+  - 说明：编辑模板
+
+- `details_template`
+  - 默认：`admin/model/details.html`
+  - 说明：详情模板
 
 #### 10.4.3 列解析
 
@@ -571,25 +587,22 @@ class DataBackend(ABC):
     def create_ajax_loader(self, name, options): ...  # 可选
 ```
 
-| 方法 | 责任 |
-| --- | --- |
-| `scaffold_list_columns` | 默认列表列 |
-| `scaffold_sortable_columns` | 默认可排序列 |
-| `scaffold_filter` | 某列的过滤器 |
-| `scaffold_form` | 创建/编辑表单类 |
-| `scaffold_list_form` | 列表内联编辑表单 |
-| `get_list` | 返回 `(count, rows)` |
-| `get_one` | 按主键取单条 |
-| `get_pk_value` | 主键字符串表示 |
-| `create_model` / `update_model` / `delete_model` | 单条写操作 |
-| `delete_model_by_pk_ids` | 批量删除 |
-| `create_ajax_loader` | AJAX 外键加载器（可选） |
+- `scaffold_list_columns`：默认列表列
+- `scaffold_sortable_columns`：默认可排序列
+- `scaffold_filter`：某列的过滤器
+- `scaffold_form`：创建/编辑表单类
+- `scaffold_list_form`：列表内联编辑表单
+- `get_list`：返回 `(count, rows)`
+- `get_one`：按主键取单条
+- `get_pk_value`：主键字符串表示
+- `create_model` / `update_model` / `delete_model`：单条写操作
+- `delete_model_by_pk_ids`：批量删除
+- `create_ajax_loader`：AJAX 外键加载器（可选）
 
 自定义后端的最小骨架：
 
 ```python
 from flask_exts.admin.model.backend import DataBackend
-
 
 class JsonBackend(DataBackend):
     def scaffold_list_columns(self): ...
@@ -631,13 +644,11 @@ class SqlaModelView(ModelView):
 
 #### 10.6.2 脚手架规则
 
-| 脚手架 | 规则 |
-| --- | --- |
-| `scaffold_list_columns` | 包含多对一/多对多关系列；标量列跳过外键 |
-| `scaffold_sortable_columns` | 只含单列属性；跳过外键与复合列 |
-| `scaffold_filter` | 按列类型生成过滤器；使用 `column_choices` 作为 options |
-| `scaffold_form` | 跳过主键、外键、下划线开头字段；关系字段保留 |
-| `scaffold_list_form` | 按 `column_editable_list` 生成 |
+- `scaffold_list_columns`：包含多对一/多对多关系列；标量列跳过外键
+- `scaffold_sortable_columns`：只含单列属性；跳过外键与复合列
+- `scaffold_filter`：按列类型生成过滤器；使用 `column_choices` 作为 options
+- `scaffold_form`：跳过主键、外键、下划线开头字段；关系字段保留
+- `scaffold_list_form`：按 `column_editable_list` 生成
 
 #### 10.6.3 列表查询顺序
 
@@ -669,11 +680,9 @@ def delete_model(self, model): ...
 
 #### 10.6.6 已知问题
 
-| 问题 | 说明 |
-| --- | --- |
-| C2 计数与列表行数（已关闭） | `build_count()` 按 JOIN 后实际行数计数，与列表查询返回行数一致；一对多重复行同时出现在列表与计数中 |
-| 复合主键 | 使用逗号编码；主键值本身含逗号时会歧义 |
-| 自动 JOIN | 只根据 `column_list` 的根关系推断；复杂路径可能需要手动配置 |
+- **CR-002 计数与列表行数（已关闭）**：`build_count()` 按 JOIN 后实际行数计数，与列表查询返回行数一致；一对多重复行同时出现在列表与计数中
+- **复合主键**：使用逗号编码；主键值本身含逗号时会歧义
+- **自动 JOIN**：只根据 `column_list` 的根关系推断；复杂路径可能需要手动配置
 
 ### 10.7 列、格式化、筛选、排序、搜索
 
@@ -695,10 +704,8 @@ class PostView(SqlaModelView):
 ```python
 from markupsafe import Markup
 
-
 def phone_number_formatter(view, model, name):
     return Markup(f"<nobr>{model.phone_number}</nobr>") if model.phone_number else None
-
 
 class AuthorView(SqlaModelView):
     column_formatters = {"phone_number": phone_number_formatter}
@@ -718,7 +725,6 @@ from flask_exts.admin.model.type_formatters import BASE_FORMATTERS
 MY_FORMATTERS = dict(BASE_FORMATTERS)
 MY_FORMATTERS[type(None)] = lambda view, value, name: "—"
 
-
 class AuthorView(SqlaModelView):
     column_type_formatters = MY_FORMATTERS
 ```
@@ -729,7 +735,6 @@ class AuthorView(SqlaModelView):
 
 ```python
 from flask_exts.admin.sqla.filter.filters import BaseSQLAFilter
-
 
 class FilterNameBrown(BaseSQLAFilter):
     def __init__(self, column_type, column, name, data_type=None, options=None):
@@ -759,19 +764,16 @@ class FilterNameBrown(BaseSQLAFilter):
 
 #### 10.7.5 排序
 
-
 - 多列 `column_default_sort` 的格式与类型约束见第 10.4.2 节。
 - `sort` 是列表列索引；`desc=1` 表示降序。
 - 多列排序通过 `(label, (path1, path2))` 表达。
 
 #### 10.7.6 搜索
 
-
 - 支持点号路径。
 - 搜索操作符及多词/多列语义见 `requirements.md` 的 `REQ-DATA-002` 与 `REQ-ADMIN-002`。
 
 #### 10.7.7 内联编辑
-
 
 - 列表页通过 `/ajax/update/` 保存。
 - 需要字段可编辑、表单可生成、CSRF 正确。
@@ -826,7 +828,6 @@ class AuthorView(SqlaModelView):
 # 历史写法（反模式说明：View 层直接穿透访问 backend.session）
 def edit_form(self, *args, **kwargs):
     return self._filtered_posts(super().edit_form(*args, **kwargs))
-
 
 def _filtered_posts(self, form):
     form.featured_post.query_factory = lambda: (
@@ -886,16 +887,16 @@ inline_models = (
   - `action=delete` 删除子记录
 - 需要 CSRF token；后端会校验。
 
-#### 10.9.4 已知缺陷 C1
+#### 10.9.4 已知缺陷 CR-001
 
-`process_ajax_refs` 调用 `self.view.create_ajax_loader(...)` 时传 5 个参数，但签名是 `(name, options)`；完整复现证据见第 10.16 节 C1。
+`process_ajax_refs` 调用 `self.view.create_ajax_loader(...)` 时传 5 个参数，但签名是 `(name, options)`；完整复现证据见第 10.16 节 CR-001。
 
 后果：Inline 子模型配置 `ajax_refs` 时直接 `TypeError`。修复方向：
 
 - 统一 `create_ajax_loader` 签名；或
 - Inline 里先构造 `AjaxSqlaModelLoader` 并赋值。
 
-修复后补测试：`tests/integration/admin/sqla/test_inline_ajax.py`。
+修复后补测试：`tests/integration/admin/sqla/test_inline_ajax.py` **已存在**（4 个 Inline AJAX 用例，按 HEAD `445b03d` 核验），但均未给子模型配置 `ajax_refs`，因此从未触发 `process_ajax_refs`。需要的是在该文件内**新增 `ajax_refs` 场景用例**，而非新建文件；缺口登记见 `testing.md` 第 14 节 T5。
 
 ### 10.10 AJAX 外键
 
@@ -938,7 +939,7 @@ def format(model):
 #### 10.10.3 注意事项
 
 - 关联模型的 Admin 视图最好已注册，便于前端跳转/权限一致。
-- `ajax_refs` 与 Inline 同时使用时注意 C1。
+- `ajax_refs` 与 Inline 同时使用时注意 CR-001。
 - AJAX 更新需要 CSRF。
 
 ### 10.11 导出
@@ -971,15 +972,13 @@ class PostView(SqlaModelView):
 
 #### 10.12.1 请求参数
 
-| 参数 | 含义 |
-| --- | --- |
-| `page` | 页码，**从 0 开始** |
-| `page_size` | 页大小；必须在白名单内 |
-| `sort` | 排序列索引（列表列下标） |
-| `desc` | `1` 表示降序 |
-| `search` | 搜索词 |
-| `flt*` | 过滤器参数 |
-| 其他 | 放入 `extra_args`，分页/排序时保留（`url`、`flt*` 除外） |
+- `page`：页码，**从 0 开始**
+- `page_size`：页大小；必须在白名单内
+- `sort`：排序列索引（列表列下标）
+- `desc`：`1` 表示降序
+- `search`：搜索词
+- `flt*`：过滤器参数
+- **其他**：放入 `extra_args`，分页/排序时保留（`url`、`flt*` 除外）
 
 #### 10.12.2 解析
 
@@ -997,10 +996,10 @@ ViewArgs(
 
 `get_safe_page_size`：仅当 `can_set_page_size` 为真且请求值在 `page_size_options` 白名单内时采用，否则回退到 `page_size`。
 
-#### 10.12.3 已知问题 C5/C6（已修复）
+#### 10.12.3 已知问题 CR-005/CR-006（已修复）
 
-- C5：原 `hasattr(self, "get_url")` 死分支已移除，`get_list_url` 直接调用 `self.view.get_url(".index_view")`。
-- C6：查询参数改用 `urllib.parse.urlencode(params, doseq=True)` 编码；空格、`&`、`#`、非 ASCII 字符可正确回放。
+- CR-005：原 `hasattr(self, "get_url")` 死分支已移除，`get_list_url` 直接调用 `self.view.get_url(".index_view")`。
+- CR-006：查询参数改用 `urllib.parse.urlencode(params, doseq=True)` 编码；空格、`&`、`#`、非 ASCII 字符可正确回放。
 - 回归测试：`tests/unit/admin/model/test_pagination.py`、`tests/integration/admin/sqla/test_search.py::test_search_url_encodes_special_characters`。
 
 ### 10.13 CRUD 与请求流程
@@ -1075,13 +1074,11 @@ POST /admin/<endpoint>/new/
 
 #### 10.14.1 默认模板
 
-| 模板 | 用途 |
-| --- | --- |
-| `admin/model/list.html` | 列表 |
-| `admin/model/create.html` | 创建 |
-| `admin/model/edit.html` | 编辑 |
-| `admin/model/details.html` | 详情 |
-| `admin/master.html` | 布局/菜单/消息 |
+- `admin/model/list.html`：列表
+- `admin/model/create.html`：创建
+- `admin/model/edit.html`：编辑
+- `admin/model/details.html`：详情
+- `admin/master.html`：布局/菜单/消息
 
 #### 10.14.2 覆盖模板
 
@@ -1120,16 +1117,14 @@ class TreeView(SqlaModelView):
 
 #### 10.15.1 新增一个模型视图
 
-新增模型视图的最小注册示例见第 10.0.1 节；本表只导航到需要查阅的专题配置。
+新增模型视图的最小注册示例见第 10.0.1 节；本节只导航到需要查阅的专题配置。
 
-| Recipe | 详见 |
-| --- | --- |
-| 自定义格式化器 | 第 10.7.2 节 |
-| 自定义过滤器 | 第 10.7.4 节 |
-| Inline 子表单 | 第 10.9.1 节 |
-| AJAX 外键 | 第 10.10.1 节 |
-| 自定义列表模板 | 第 10.14.2 节 |
-| 自定义页面 | 第 10.14.3 节 |
+- **自定义格式化器**：第 10.7.2 节
+- **自定义过滤器**：第 10.7.4 节
+- **Inline 子表单**：第 10.9.1 节
+- **AJAX 外键**：第 10.10.1 节
+- **自定义列表模板**：第 10.14.2 节
+- **自定义页面**：第 10.14.3 节
 
 #### 10.15.2 自定义后端
 
@@ -1137,10 +1132,8 @@ class TreeView(SqlaModelView):
 from flask_exts.admin.model.view import ModelView
 from .backend import JsonBackend
 
-
 class JsonModelView(ModelView):
     column_list = ("id", "name")
-
 
 jsonview = JsonModelView(MyRecord, JsonBackend)
 admin.register_view(jsonview)
@@ -1150,17 +1143,57 @@ admin.register_view(jsonview)
 
 ### 10.16 已知问题与回归
 
-| ID | 严重度 | 位置 | 问题 | 建议 |
-| --- | --- | --- | --- | --- |
-| C1 | 高 | `admin/sqla/inline/inline_model_convert.py::process_ajax_refs` | 调用 `create_ajax_loader` 传 5 个参数，签名是 `(name, options)` | 统一签名或直接构造 loader |
-| C2 | 中（已关闭） | `datastore/sqla/query.py::build_count` | 计数按列表查询实际行数，与 JOIN 结果一致；原“虚高”判断不成立 | 保持 `count` 与列表行数一致 |
-| C5 | 低（已修复） | `admin/model/handlers/pagination.py::get_list_url` | 死分支已移除 | 调用 `view.get_url(".index_view")`；补回归测试 |
-| C6 | 低（已修复） | 同上 | 查询参数已用 `urlencode` 编码 | 保持 TC-ADMIN-032 回归 |
-| C7 | 低（已删除） | `datastore/sqla/query_builders/` | 运行时未使用，和 `Query` 形成两套抽象 | 已移除整个包 |
-| C10 | 低 | 扩展管理器的晚注册路径 / `AdminExtension.post_init` | 新扩展会执行自身初始化，但不会重跑 Admin 的视图扫描；晚注册扩展提供的 `AdminViewMixin` 不会自动被收集 | 文档化或提供显式刷新机制 |
-| C11 | 中（已修复） | `extension_core/registry.py::ExtensionRegistry.shutdown_all` | 逐扩展捕获普通 `Exception`、记录 warning 并继续逆序关闭；`BaseException` 不被吞掉 | 保持异常隔离与状态清理测试 |
-| V-01 | 中（已在 0.4.2 修复） | `admin/model/view.py::ajax_update` | `can_edit=False` 时在读取请求体前返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需用 `column_editable_list=()` 作为临时阻断 |
-| V-02 | 低（已修复） | `admin/model/handlers/row_actions.py` / `bulk_actions.py` | 已重命名为 `RowActionHandler` / `BulkActionHandler`，方法改为 `get_bulk_actions()` / `get_bulk_action()` | 保持新命名 |
+- `CR-001`
+  - 严重度：高
+  - 位置：`admin/sqla/inline/inline_model_convert.py::process_ajax_refs`
+  - 问题：调用 `create_ajax_loader` 传 5 个参数，签名是 `(name, options)`
+  - 建议：统一签名或直接构造 loader
+
+- `CR-002`
+  - 严重度：中（已关闭）
+  - 位置：`datastore/sqla/query.py::build_count`
+  - 问题：计数按列表查询实际行数，与 JOIN 结果一致；原“虚高”判断不成立
+  - 建议：保持 `count` 与列表行数一致
+
+- `CR-005`
+  - 严重度：低（已修复）
+  - 位置：`admin/model/handlers/pagination.py::get_list_url`
+  - 问题：死分支已移除
+  - 建议：调用 `view.get_url(".index_view")`；补回归测试
+
+- `CR-006`
+  - 严重度：低（已修复）
+  - 位置：同上
+  - 问题：查询参数已用 `urlencode` 编码
+  - 建议：保持 TC-ADMIN-032 回归
+
+- `CR-007`
+  - 严重度：低（已删除）
+  - 位置：`datastore/sqla/query_builders/`
+  - 问题：运行时未使用，和 `Query` 形成两套抽象
+  - 建议：已移除整个包
+
+- `CR-010`
+  - 严重度：低
+  - 位置：扩展管理器的晚注册路径 / `AdminExtension.post_init`
+  - 问题：新扩展会执行自身初始化，但不会重跑 Admin 的视图扫描；晚注册扩展提供的 `AdminViewMixin` 不会自动被收集
+  - 建议：文档化或提供显式刷新机制
+
+- `CR-011`
+  - 严重度：中（已修复）
+  - 位置：`extension_core/registry.py::ExtensionRegistry.shutdown_all`
+  - 问题：逐扩展捕获普通 `Exception`、记录 warning 并继续逆序关闭；`BaseException` 不被吞掉
+  - 建议：保持异常隔离与状态清理测试
+
+- `CR-012`
+  - 严重度：低（已修复）
+  - 位置：`admin/model/handlers/row_actions.py` / `bulk_actions.py`
+  - 问题：已重命名为 `RowActionHandler` / `BulkActionHandler`，方法改为 `get_bulk_actions()` / `get_bulk_action()`
+  - 建议：保持新命名
+
+**旧编号映射**（仅换号，条目内容、严重度与状态均未变更）：`C1`→`CR-001`、`C2`→`CR-002`、`C5`→`CR-005`、`C6`→`CR-006`、`C7`→`CR-007`、`C10`→`CR-010`、`C11`→`CR-011`、`V-02`→`CR-012`；`V-01` 与 `security.md` 的 `SEC-19` 指向同一问题，已废止独立编号，主记录见 `security.md` 第 11 节，本节不再单列。前缀语义、分配与别名规则见 `glossary.md` 第 1.2 节。
+
+**缺号说明**：`CR-003`、`CR-004`、`CR-008`、`CR-009` 在旧 `C*` 序列中即未出现，历史原因未记录，标**待核实**；这四个编号不得复用，也不得用于新问题。
 
 其他注意：
 
@@ -1170,7 +1203,7 @@ admin.register_view(jsonview)
 
 #### 10.16.1 详细说明
 
-##### C1：Inline AJAX 加载器参数不匹配
+##### CR-001：Inline AJAX 加载器参数不匹配
 
 当前调用：
 
@@ -1189,11 +1222,11 @@ def create_ajax_loader(self, name, options):
     return self._backend.create_ajax_loader(name, options)
 ```
 
-**静态证据 / 待验证：** 给 `inline_models` 的子模型配置 `ajax_refs`，访问创建/编辑页可触发该调用路径；源码调用参数与方法签名不匹配，预期参数绑定失败。本轮未运行该复现。
+**静态证据：** 按 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 只读核对——调用侧 `inline_model_convert.py:81-83` 传 5 个参数，而 `backend.py:135`、`view.py:602`、`sqla/backend.py:289` 三处签名均为 `(name, options)`，参数绑定必然失败；`tests/integration/admin/sqla/test_inline_ajax.py` 现有 4 个用例均未配置 `ajax_refs`，因此该路径未被任何测试触发。本轮未运行复现（仓库只读）。
 
-**建议：** 统一签名。要么让 `create_ajax_loader` 接受 `(model, session, name, field_name, options)`，要么在 Inline 里先构造 `AjaxSqlaModelLoader` 并直接赋值。修复后补测试 `tests/integration/admin/sqla/test_inline_ajax.py`。
+**建议**： 统一签名。要么让 `create_ajax_loader` 接受 `(model, session, name, field_name, options)`，要么在 Inline 里先构造 `AjaxSqlaModelLoader` 并直接赋值。修复后在 `tests/integration/admin/sqla/test_inline_ajax.py` 内补一个为子模型配置 `ajax_refs` 的场景用例——该文件已存在，缺的是场景而非文件。
 
-##### C2：`build_count` 一对多计数（已关闭）
+##### CR-002：`build_count` 一对多计数（已关闭）
 
 列表查询在关联 JOIN 下会返回重复根对象；分页总数必须与列表实际返回的行数一致。因此 `build_count()` 保持：
 
@@ -1211,40 +1244,43 @@ return stmt
 
 > 该语义下同一根对象可能在列表中出现多次。如后续改为“一行一个根记录”，必须同时调整列表查询、计数与分页，并更新 REQ-ADMIN-005。
 
-##### C5 / C6：`get_list_url`（已修复）
+##### CR-005 / CR-006：`get_list_url`（已修复）
 
 死分支已删除；`get_list_url` 通过 `self.view.get_url(".index_view")` 生成基础 URL，并使用 `urlencode(params, doseq=True)` 编码查询参数。
 
 回归测试覆盖空格、`&`、非 ASCII、`sort=0`、额外参数与筛选参数：
 `tests/unit/admin/model/test_pagination.py`、`tests/integration/admin/sqla/test_search.py`。
 
-##### C7：未使用的 query builders（已删除）
+##### CR-007：未使用的 query builders（已删除）
 
 `FilterBuilder`、`JoinBuilder`、`SortBuilder`、`PaginationBuilder` 未被 `SqlaBackend` 或 `Query` 使用，已随 `datastore/sqla/query_builders/` 整体删除，保留 `query.py::Query` 作为唯一查询构造路径。
 
-##### C10：晚注册扩展
+##### CR-010：晚注册扩展
 
 应用初始化后注册扩展时，管理器会执行新扩展自身的 `init_app` / `post_init`，但不会重新调用已初始化的 `AdminExtension.post_init`。因此，晚注册扩展提供的 `AdminViewMixin` 不会自动进入 Admin 的视图注册表。该结论来自 HEAD 源码静态核对，未运行针对性复现测试。
 
-**建议：**
+**建议**：
 
 - 如果确实需要动态注册，提供显式的 `admin.rescan_views()` 或事件
 - 或在 `register_extension` 中对新扩展触发相关扩展的 `post_init`（需要设计幂等与重复注册保护）
 
-##### V-02：RowAction 与 BulkAction 命名（已修复）
+##### CR-012：RowAction 与 BulkAction 命名（已修复）
 
 两套处理器现已使用明确命名：
 
-| 文件 | 类 | 职责 | 主要方法 |
-| --- | --- | --- | --- |
-| `handlers/row_actions.py` | `RowActionHandler` | 单行按钮：查看/编辑/删除/链接 | `get_row_actions()` |
-| `handlers/bulk_actions.py` | `BulkActionHandler` | 选中多行的批量操作 | `get_bulk_actions()`、`get_bulk_action()`、`action_form()` |
+- `handlers/row_actions.py`
+  - 类：`RowActionHandler`
+  - 职责：单行按钮：查看/编辑/删除/链接
+  - 主要方法：`get_row_actions()`
+
+- `handlers/bulk_actions.py`
+  - 类：`BulkActionHandler`
+  - 职责：选中多行的批量操作
+  - 主要方法：`get_bulk_actions()`、`get_bulk_action()`、`action_form()`
 
 `ModelView` 对应属性为 `_row_actions_handler` 与 `_bulk_actions_handler`，转发方法为 `get_row_actions()`、`get_bulk_actions()`、`get_bulk_action()`；模板 `admin/model/list.html` 使用 `view.get_bulk_actions()`。
 
 该重命名为破坏性 API 变更，旧名未保留别名。
-
-<a id="1017-测试映射"></a>
 
 ### 10.17 测试与追溯入口
 
@@ -1353,7 +1389,7 @@ list_template / create_template / edit_template / details_template
 - `shutdown()` 应按逆序释放资源。
 - 单个扩展失败不应阻止其他资源清理：Registry 对每个扩展捕获普通 `Exception`、记录 warning 并继续关闭；不捕获 `BaseException`。
 
-##### C11：扩展关闭异常隔离（已修复）
+##### CR-011：扩展关闭异常隔离（已修复）
 
 `src/flask_exts/extension_core/registry.py::ExtensionRegistry.shutdown_all` 逐扩展捕获普通 `Exception`，产生 warning 后继续逆序关闭，并在 `finally` 中清理该扩展的 initialized 状态；`BaseException` 仍向外传播。
 
@@ -1390,7 +1426,6 @@ list_template / create_template / edit_template / details_template
 ```python
 from flask import Flask
 from flask_exts.extension_core.base import Extension
-
 
 class AuditLogExtension(Extension):
     """一个示例审计日志扩展，演示声明依赖、初始化与资源关闭。"""
@@ -1493,7 +1528,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 2. 一个 `SqlaDb` 实例同一时刻只能绑定一个 Flask app；`dispose()` 后可重新绑定。多个 app 并发使用时应使用独立实例。
 3. 数据访问必须在 app context 内进行，使用统一的 session lifecycle。
 4. 查询构造应遵守单一入口和可审查职责，不把数据库细节散落到 UI 或扩展逻辑中。
-5. 后端由 `SQLALCHEMY_DATABASE_URI` 配置；`examples/demo` 使用 SQLite，不把 demo 配置泛化为库默认。生产环境应按部署要求明确选择数据库。
+5. 后端由 `SQLALCHEMY_DATABASE_URI` 配置；仓库内 `examples/demo` 使用 SQLite，不把 demo 配置泛化为库默认。生产环境应按部署要求明确选择数据库。
 
 ### 12.3 生命周期规范
 
@@ -1512,7 +1547,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 #### 12.3.3 关闭与重绑定
 
 - `dispose()` 或等价释放动作必须在重绑定前调用。
-- 关闭失败应被隔离，不应影响其他扩展的清理；Registry 已按 `REQ-EXT-004` 隔离普通异常并保留 `BaseException` 传播，见 C11。
+- 关闭失败应被隔离，不应影响其他扩展的清理；Registry 已按 `REQ-EXT-004` 隔离普通异常并保留 `BaseException` 传播，见 CR-011。
 
 ### 12.4 约束与不变式
 
@@ -1538,7 +1573,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 - 分页应使用统一的 page/page_size 规则。
 - 计数必须和查询结果保持语义一致，避免重复计数或 JOIN 误差。
 
-> C2 已按“计数与列表行数一致”关闭：`build_count()` 与列表查询使用相同 JOIN/筛选条件，不做根记录去重；回归测试覆盖 1 个根对象 + 5 条子记录的 `count == 5`。
+> CR-002 已按“计数与列表行数一致”关闭：`build_count()` 与列表查询使用相同 JOIN/筛选条件，不做根记录去重；回归测试覆盖 1 个根对象 + 5 条子记录的 `count == 5`。
 
 ### 12.6 兼容性与扩展性
 
@@ -1548,7 +1583,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 
 ### 12.7 生产关系数据库接入参考（PostgreSQL）
 
-`examples/demo` 采用单机 SQLite 作为演示，生产环境推荐切换为 PostgreSQL。生产配置应显式通过 `SQLALCHEMY_ENGINE_OPTIONS` 调优连接池与回收周期，防止连接泄露或静默超时断开：
+仓库内 `examples/demo` 采用单机 SQLite 作为演示，生产环境推荐切换为 PostgreSQL。生产配置应显式通过 `SQLALCHEMY_ENGINE_OPTIONS` 调优连接池与回收周期，防止连接泄露或静默超时断开：
 
 ```python
 # config_prod.py 示例

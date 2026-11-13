@@ -8,27 +8,9 @@
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-13 |
 > | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
-> | 适用目录 | `flask-exts/examples/demo` |
-> | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现及 View/Admin）、`requirements.md`（契约）、`testing.md`（测试）、`security.md`（安全） |
+> | 适用目录 | `flask-exts/examples/demo`——代码仓库根目录下的示例应用；本文其余位置简写的 `examples/demo` 均指此路径，命令中的该路径相对仓库根目录执行 |
 >
 > **定位**：`examples/demo` 是**可运行的参考应用**，不是生产模板。它用尽量少的代码展示 Flask-Exts 的模型、Admin、Inline、筛选、排序、导出、AJAX、递归关系和自定义模板能力。修改 demo 时优先保证“能运行、能看懂、不引入额外依赖”。
-
-## 目录
-
-- [0. 快速开始](#0-快速开始)
-- [1. 定位与边界](#1-定位与边界)
-- [2. 目录结构](#2-目录结构)
-- [3. 启动流程](#3-启动流程)
-- [4. 数据模型](#4-数据模型)
-- [5. Admin 视图](#5-admin-视图)
-- [6. 模板与静态资源](#6-模板与静态资源)
-- [7. 示例数据](#7-示例数据)
-- [8. 配置](#8-配置)
-- [9. 扩展 Demo Recipes](#9-扩展-demo-recipes)
-- [10. 常见问题](#10-常见问题)
-- [11. 验证清单](#11-验证清单)
-- [12. 编写规范](#12-编写规范)
-- [13. 与主文档、测试文档的关系](#13-与主文档测试文档的关系)
 
 ## 0. 快速开始
 
@@ -40,21 +22,20 @@
 
 ### 0.2 启动
 
-执行前先向用户确认代码仓库根目录；下表中的“仓库根目录”均指该确认路径，不假定固定位置。
+执行前先向用户确认代码仓库根目录；下文中的“仓库根目录”均指该确认路径，不假定固定位置。
 
 对外启动说明列出的方式是在 `examples/demo` 目录运行：
 
-| 执行目录 | 命令 |
-| --- | --- |
-| `examples/demo` | `uv run flask --app __init__ run` |
+- **执行目录**：`examples/demo`
+- **命令**：`uv run flask --app __init__ run`
 
 `uv run` 使用仓库根目录 `uv sync` 创建的项目 `.venv`；依赖安装方式见 `testing.md` 第 0.1 节。
 
 端口、调试和 CLI 子命令沿用 `--app __init__`，见第 0.3、0.4 节。
 
-**命令来源：**
+**命令来源**：
 
-- 对外启动命令以 `examples/README.rst` 为准；该文件只列出上表方式。
+- 对外启动命令以 `examples/README.rst` 为准；该文件只列出上述方式。
 - 未经验证的仓库根目录启动变体不列为受支持方式。
 
 打开：
@@ -65,9 +46,9 @@
 
 默认账号：
 
-| 用户名 | 密码 | 角色 |
-| --- | --- | --- |
-| `admin` | `admin` | `admin` |
+- **用户名**：`admin`
+- **密码**：`admin`
+- **角色**：`admin`
 
 > 默认密码仅用于本地演示。任何可被他人访问的环境都必须修改。
 
@@ -85,7 +66,6 @@ uv run flask --app __init__ run --port 5001
 # 开启调试
 uv run flask --app __init__ run --debug
 ```
-
 
 ### 0.4 重置数据库
 
@@ -105,12 +85,10 @@ rm examples/demo/demo.sqlite
 
 ### 1.1 demo 要展示什么
 
-| 范围 | 主要入口 |
-| --- | --- |
-| 应用与示例数据 | `make_app.py`、`build_sample.py` |
-| 模型与关系 | `models/` |
-| Admin 视图 | `views/`、`admin_views.py` |
-| 模板与静态资源 | `templates/`、`static/` |
+- **应用与示例数据**：`make_app.py`、`build_sample.py`
+- **模型与关系**：`models/`
+- **Admin 视图**：`views/`、`admin_views.py`
+- **模板与静态资源**：`templates/`、`static/`
 
 各视图展示点见第 5.2 节，模板接入状态见第 6.3 节。
 
@@ -202,13 +180,30 @@ Tree 1 ─────── N Tree
 
 ### 4.2 模型职责
 
-| 模型 | 表 | 关键字段 | 演示点 |
-| --- | --- | --- | --- |
-| `Author` | `author` | `type`、`email`（唯一）、`featured_post_id`、电话/日期字段 | 枚举、hybrid property、1-N、指向 Post 的可空外键 |
-| `Post` | `post` | `title`、`text`、`color`、`date`、`author_id` | 1-N、M-N、可排序/可搜索字段 |
-| `Tag` | `tag` | `name`（唯一） | 最简模型 |
-| `post_tag` | `post_tag` | `post_id`、`tag_id` | 多对多关联表 |
-| `Tree` | `tree` | `name`、`parent_id` | 自引用/递归关系 |
+- `Author`
+  - 表：`author`
+  - 关键字段：`type`、`email`（唯一）、`featured_post_id`、电话/日期字段
+  - 演示点：枚举、hybrid property、1-N、指向 Post 的可空外键
+
+- `Post`
+  - 表：`post`
+  - 关键字段：`title`、`text`、`color`、`date`、`author_id`
+  - 演示点：1-N、M-N、可排序/可搜索字段
+
+- `Tag`
+  - 表：`tag`
+  - 关键字段：`name`（唯一）
+  - 演示点：最简模型
+
+- `post_tag`
+  - 表：`post_tag`
+  - 关键字段：`post_id`、`tag_id`
+  - 演示点：多对多关联表
+
+- `Tree`
+  - 表：`tree`
+  - 关键字段：`name`、`parent_id`
+  - 演示点：自引用/递归关系
 
 ### 4.3 关系约定
 
@@ -232,12 +227,21 @@ Tree 1 ─────── N Tree
 
 ### 5.2 视图能力对照
 
-| 视图 | 模型 | 演示点 |
-| --- | --- | --- |
-| `AuthorView` | `Author` | Inline 子表单、分页、导出、排序、筛选、可编辑列、自定义表单参数 |
-| `PostView` | `Post` | 关联列、关联搜索、多列排序、自定义过滤器、AJAX 外键、导出 |
-| `TagView` | `Tag` | 最小可用视图 |
-| `TreeView` | `Tree` | 自定义列表模板、`render()` 传参、递归关系 |
+- `AuthorView`
+  - 模型：`Author`
+  - 演示点：Inline 子表单、分页、导出、排序、筛选、可编辑列、自定义表单参数
+
+- `PostView`
+  - 模型：`Post`
+  - 演示点：关联列、关联搜索、多列排序、自定义过滤器、AJAX 外键、导出
+
+- `TagView`
+  - 模型：`Tag`
+  - 演示点：最小可用视图
+
+- `TreeView`
+  - 模型：`Tree`
+  - 演示点：自定义列表模板、`render()` 传参、递归关系
 
 ### 5.3 `AuthorView`
 
@@ -271,11 +275,17 @@ Flask 会先找应用自己的 `templates/`，再找扩展提供的模板。demo
 
 ### 6.3 当前模板说明
 
-| 模板 | 状态 | 说明 |
-| --- | --- | --- |
-| `tree_list.html` | 已接入 | 通过 `TreeView.list_template` 使用 |
-| `field_list.html` | 未接入 | 展示如何为字段写宏；需要视图/表单显式引用才会生效 |
-| `locations.html` | 未接入 | 独立页面示例；当前没有路由渲染它 |
+- `tree_list.html`
+  - 状态：已接入
+  - 说明：通过 `TreeView.list_template` 使用
+
+- `field_list.html`
+  - 状态：未接入
+  - 说明：展示如何为字段写宏；需要视图/表单显式引用才会生效
+
+- `locations.html`
+  - 状态：未接入
+  - 说明：独立页面示例；当前没有路由渲染它
 
 > 未接入的模板可以保留作为参考，但不要在文档中声称它们已生效；如果要启用，请补路由/视图并加入第 11 章验证。
 
@@ -295,11 +305,9 @@ Flask 会先找应用自己的 `templates/`，再找扩展提供的模板。demo
 
 `build_sample_db()` 会重建已注册模型的表并生成以下数据：
 
-| 数据 | 示例规模 |
-| --- | --- |
-| Tree | 1 个 Trunk、5 个 Branch、25 个 Leaf |
-| Post | 25 个作者、9 个标签、25 篇文章 |
-| 用户 | 创建初始 `admin` 用户并分配 `admin` 角色 |
+- **Tree**：1 个 Trunk、5 个 Branch、25 个 Leaf
+- **Post**：25 个作者、9 个标签、25 篇文章
+- **用户**：创建初始 `admin` 用户并分配 `admin` 角色
 
 该函数含 `drop_all()`，只允许用于可丢弃的本地 demo 数据库。
 
@@ -317,21 +325,33 @@ Flask 会先找应用自己的 `templates/`，再找扩展提供的模板。demo
 
 ### 7.4 已知问题
 
-| 问题 | 说明 | 处理 |
-| --- | --- | --- |
-| `author.coutry = country[1]` | 字段名拼写错误，值不会持久化 | 修正或删除；不要照抄 |
-| `admin` 用户未显式 `is_active=True` | HEAD 中 `User._is_active` 默认值为 `True`；但 `SimpleAuthorizer` 在 active 检查前放行 `admin` 角色，禁用管理员仍可能保有权限（SEC-01） | demo 显式设置账号状态；生产禁用管理员时同时移除 `admin` 角色或删除账号 |
+- `author.coutry = country[1]`
+  - 说明：字段名拼写错误，值不会持久化
+  - 处理：修正或删除；不要照抄
+
+- `admin` 用户未显式 `is_active=True`
+  - 说明：HEAD 中 `User._is_active` 默认值为 `True`，demo 依赖该默认值；`SimpleAuthorizer` 已在 0.4.2 改为先拒绝 inactive 用户，再判断 `admin` 角色（SEC-01 已修复）
+  - 处理：演示无需额外设置；生产禁用管理员时仍建议同时移除 `admin` 角色或删除账号
 
 ## 8. 配置
 
 ### 8.1 demo 显式设置的配置
 
-| 配置 | 值 | 作用 |
-| --- | --- | --- |
-| `APP_NAME` | `"FlaskDemo"` | 应用名（TOTP issuer 等） |
-| `SECRET_KEY` | `"demo"` | 会话、CSRF、令牌派生密钥；**仅本地** |
-| `DATABASE_FILE` | `examples/demo/demo.sqlite` 的绝对路径 | 数据库文件位置 |
-| `SQLALCHEMY_DATABASE_URI` | `sqlite:///<DATABASE_FILE>` | SQLAlchemy 连接串 |
+- `APP_NAME`
+  - 值：`"FlaskDemo"`
+  - 作用：应用名（TOTP issuer 等）
+
+- `SECRET_KEY`
+  - 值：`"demo"`
+  - 作用：会话、CSRF、令牌派生密钥；**仅本地**
+
+- `DATABASE_FILE`
+  - 值：`examples/demo/demo.sqlite` 的绝对路径
+  - 作用：数据库文件位置
+
+- `SQLALCHEMY_DATABASE_URI`
+  - 值：`sqlite:///<DATABASE_FILE>`
+  - 作用：SQLAlchemy 连接串
 
 ### 8.2 可选实例配置
 
@@ -385,7 +405,7 @@ demo 自定义过滤器见 `views/post_view.py` 与第 5.5 节；通用 API 和�
 
 ### 9.3 新增 Inline 子表单
 
-demo 的 Author/Post Inline 配置见 `views/author_view.py`；子模型需有父子关系。通用配置见 `spec.md` 第 10.9 节。Inline 子模型同时启用 AJAX 外键时有已知问题 C1，详情见 `spec.md` 第 10.16.1 节。
+demo 的 Author/Post Inline 配置见 `views/author_view.py`；子模型需有父子关系。通用配置见 `spec.md` 第 10.9 节。Inline 子模型同时启用 AJAX 外键时有已知问题 CR-001，详情见 `spec.md` 第 10.16.1 节。
 
 ### 9.4 新增 AJAX 外键
 
@@ -405,21 +425,57 @@ demo 目前没有自定义 CLI。若新增，在 `make_app.py` 的 `init_app(app
 
 ## 10. 常见问题
 
-| 现象 | 原因 | 处理 |
-| --- | --- | --- |
-| `ModuleNotFoundError: flask_exts` | 没有安装项目 | 在仓库根目录执行 `uv sync` |
-| `attempted relative import with no known parent package` | 在错误目录/用错误模块名启动 | 按第 0.2 节选择与执行目录匹配的启动模块名 |
-| `sqlite3.OperationalError: no such column: author.cdate` | `demo.sqlite` 是旧 schema，文件存在但模型已变 | 先按第 7.2 节确认触发条件；仅可丢弃的本地库按第 0.4 节重置 |
-| 访问 `/admin/author/` 403 | 未登录或用户没有 `admin` 角色 | 使用第 0.2 节的本地演示账号；确认其有 `admin` 角色。`/admin/` 门户可匿名访问 |
-| 登录后仍回到登录页 | 用户不存在/密码错误/角色缺失 | 确认 `build_user_admin()` 执行；需重置时按第 0.4 节处理可丢弃的本地 demo 数据库 |
-| 端口 5000 被占用 | 其他服务占用 | 改用未占用端口，命令示例见第 0.3 节 |
-| 注册后没有收到邮件 | demo 未配置 `NOREPLY_EMAIL_SENDER` | 预期行为与配置边界见第 8.3 节 |
-| 配置 `config.py` 不生效 | 配置文件不在 Flask instance 目录 | 路径确认方法见第 8.2 节 |
-| `RuntimeError: Exts extension already initialized` | 同一进程重复初始化同一 app/多个 app | 每个进程只创建一个 app；多 app 先 `dispose()` |
-| `ValueError: View with name ... already exists` | 视图名重复 | 修改 `name=` 或检查重复注册 |
-| 列表页空/字段缺失 | 模型/视图配置不一致 | 检查 `column_list`、模型导入、是否重建数据库 |
-| 导出 500 | `export_types` 需要 tablib 支持 | 使用 `csv` 或确认已安装 tablib |
-| `demo.sqlite` 出现在 `git status` | 被其他规则覆盖或手动 add | 确认 `.gitignore` 的 `*.sqlite`；不要提交 |
+- `ModuleNotFoundError: flask_exts`
+  - 原因：没有安装项目
+  - 处理：在仓库根目录执行 `uv sync`
+
+- `attempted relative import with no known parent package`
+  - 原因：在错误目录/用错误模块名启动
+  - 处理：按第 0.2 节选择与执行目录匹配的启动模块名
+
+- `sqlite3.OperationalError: no such column: author.cdate`
+  - 原因：`demo.sqlite` 是旧 schema，文件存在但模型已变
+  - 处理：先按第 7.2 节确认触发条件；仅可丢弃的本地库按第 0.4 节重置
+
+- **访问 `/admin/author/` 403**
+  - 原因：未登录或用户没有 `admin` 角色
+  - 处理：使用第 0.2 节的本地演示账号；确认其有 `admin` 角色。`/admin/` 门户可匿名访问
+
+- **登录后仍回到登录页**
+  - 原因：用户不存在/密码错误/角色缺失
+  - 处理：确认 `build_user_admin()` 执行；需重置时按第 0.4 节处理可丢弃的本地 demo 数据库
+
+- **端口 5000 被占用**
+  - 原因：其他服务占用
+  - 处理：改用未占用端口，命令示例见第 0.3 节
+
+- **注册后没有收到邮件**
+  - 原因：demo 未配置 `NOREPLY_EMAIL_SENDER`
+  - 处理：预期行为与配置边界见第 8.3 节
+
+- **配置 `config.py` 不生效**
+  - 原因：配置文件不在 Flask instance 目录
+  - 处理：路径确认方法见第 8.2 节
+
+- `RuntimeError: Exts extension already initialized`
+  - 原因：同一进程重复初始化同一 app/多个 app
+  - 处理：每个进程只创建一个 app；多 app 先 `dispose()`
+
+- `ValueError: View with name ... already exists`
+  - 原因：视图名重复
+  - 处理：修改 `name=` 或检查重复注册
+
+- **列表页空/字段缺失**
+  - 原因：模型/视图配置不一致
+  - 处理：检查 `column_list`、模型导入、是否重建数据库
+
+- **导出 500**
+  - 原因：`export_types` 需要 tablib 支持
+  - 处理：使用 `csv` 或确认已安装 tablib
+
+- `demo.sqlite` 出现在 `git status`
+  - 原因：被其他规则覆盖或手动 add
+  - 处理：确认 `.gitignore` 的 `*.sqlite`；不要提交
 
 ## 11. 验证清单
 
@@ -505,15 +561,13 @@ print("demo smoke ok")
 
 ### 12.3 文件放置
 
-| 内容 | 位置 |
-| --- | --- |
-| 模型 | `models/{name}.py`，并在 `models/__init__.py` 导入 |
-| Admin 视图 | `views/{name}_view.py` |
-| 视图注册 | `admin_views.py` |
-| 种子数据 | `build_sample.py` |
-| 模板 | `templates/{name}.html` |
-| 静态文件 | `static/`（仅本地演示） |
-| 应用配置 | `make_app.py` 或 instance 配置 |
+- **模型**：`models/{name}.py`，并在 `models/__init__.py` 导入
+- **Admin 视图**：`views/{name}_view.py`
+- **视图注册**：`admin_views.py`
+- **种子数据**：`build_sample.py`
+- **模板**：`templates/{name}.html`
+- **静态文件**：`static/`（仅本地演示）
+- **应用配置**：`make_app.py` 或 instance 配置
 
 ## 13. 与主文档、测试文档的关系
 

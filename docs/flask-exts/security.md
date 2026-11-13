@@ -9,35 +9,8 @@
 > | 最后更新 | 2026-11-13 |
 > | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复） |
 > | 适用仓库 | `flask-exts` |
-> | 配套文档 | `architecture.md`（架构）、`spec.md`（设计/实现）、`requirements.md`（契约）、`testing.md`（测试）、`demo.md`（示例）；View/Admin 见 `spec.md` 第 10 章 |
 >
 > **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。
-
-## 目录
-
-- [0. 快速安全基线](#0-快速安全基线)
-  - [0.1 五条必须做到](#01-五条必须做到)
-  - [0.2 五条不要做](#02-五条不要做)
-  - [0.3 代码未修复时的临时配置阻断（Workarounds）](#03-代码未修复时的临时配置阻断workarounds)
-- [1. 范围与威胁模型](#1-范围与威胁模型)
-- [2. 安全架构与密钥](#2-安全架构与密钥)
-- [3. 认证与会话](#3-认证与会话)
-- [4. 授权](#4-授权)
-- [5. 密码与凭据](#5-密码与凭据)
-- [6. 令牌与邮件流程](#6-令牌与邮件流程)
-- [7. CSRF 与浏览器安全](#7-csrf-与浏览器安全)
-- [8. 双因素认证（TFA）](#8-双因素认证tfa)
-- [9. JWT / API 认证](#9-jwt--api-认证)
-- [10. 配置安全清单](#10-配置安全清单)
-  - [10.1 必需配置](#101-必需配置)
-  - [10.2 推荐配置](#102-推荐配置)
-  - [10.3 禁止配置](#103-禁止配置)
-  - [10.4 密钥轮换决策表](#104-密钥轮换决策表)
-  - [10.5 生产反向代理配置参考（Nginx）](#105-生产反向代理配置参考nginx)
-- [11. 已知风险与待决策](#11-已知风险与待决策)
-- [12. 测试覆盖与缺口](#12-测试覆盖与缺口)
-- [13. 安全运营与响应](#13-安全运营与响应)
-- [14. 发布前安全检查清单](#14-发布前安全检查清单)
 
 ## 0. 快速安全基线
 
@@ -61,13 +34,25 @@
 
 在核心安全风险未完成代码修复与发版前，生产部署必须在运维与配置层采取以下替代控制措施：
 
-| 风险项 | 缺陷根因 | 临时阻断要求（运维/管理） |
-| --- | --- | --- |
-| **SEC-01**（禁用 admin 仍有效） | 已在 `0.4.2` 修复；0.4.1 及更早版本仍优先放行 `admin` 角色 | 对 0.4.1 及更早的部署：**禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时移除其 `admin` 角色，或直接删除账号。 |
-| **SEC-02**（JWT 绕过 TFA） | `load_user_from_request` 仅检查 `is_active`，未验证 TFA 完成标记 | 对开启双因素认证的高权限账号，**切勿为其发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。 |
-| **SEC-03**（认证端点缺限流） | `0.4.2` 已加入账号级失败锁定（部分修复）：密码与第二因子共享计数、指数退避；但未知用户名、注册与找回密码入口仍无应用层计数 | **反向代理硬性限流仍然必须**：Nginx / Envoy / WAF 对 `/user/login/`、`/user/register/`、`/user/verify_tfa/`、`/user/forgot_password/`、`/user/reset_password/` 按来源 IP 限流（如单 IP 每分钟 ≤5 次），与内置账号锁定叠加。 |
-| **SEC-18**（未配置 sender 泄露令牌）（已在 0.4.2 修复） | `0.4.2` 的 `send_email` 只记录 sender 类型与脱敏收件人，不再输出 `data` | 已发布 0.4.1 及更早版本仍会把完整载荷写入 warning；这些版本的日志需限制访问并过滤验证/重置链接。 |
-| **SEC-19 / V-01**（内联编辑绕过只读开关） | 已在 `0.4.2` 修复；0.4.1 及更早版本仅检查 `column_editable_list` | 对 0.4.1 及更早的部署：若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。 |
+- **SEC-01**（禁用 admin 仍有效）
+  - 缺陷根因：已在 `0.4.2` 修复；0.4.1 及更早版本仍优先放行 `admin` 角色
+  - 临时阻断要求（运维/管理）：对 0.4.1 及更早的部署：**禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时移除其 `admin` 角色，或直接删除账号。
+
+- **SEC-02**（JWT 绕过 TFA）
+  - 缺陷根因：`load_user_from_request` 仅检查 `is_active`，未验证 TFA 完成标记
+  - 临时阻断要求（运维/管理）：对开启双因素认证的高权限账号，**切勿为其发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。
+
+- **SEC-03**（认证端点缺限流）
+  - 缺陷根因：`0.4.2` 已加入账号级失败锁定（部分修复）：密码与第二因子共享计数、指数退避；但未知用户名、注册与找回密码入口仍无应用层计数
+  - 临时阻断要求（运维/管理）：**反向代理硬性限流仍然必须**：Nginx / Envoy / WAF 对 `/user/login/`、`/user/register/`、`/user/verify_tfa/`、`/user/forgot_password/`、`/user/reset_password/` 按来源 IP 限流（如单 IP 每分钟 ≤5 次），与内置账号锁定叠加。
+
+- **SEC-18**（未配置 sender 泄露令牌）（已在 0.4.2 修复）
+  - 缺陷根因：`0.4.2` 的 `send_email` 只记录 sender 类型与脱敏收件人，不再输出 `data`
+  - 临时阻断要求（运维/管理）：已发布 0.4.1 及更早版本仍会把完整载荷写入 warning；这些版本的日志需限制访问并过滤验证/重置链接。
+
+- **SEC-19**（内联编辑绕过只读开关；旧别名 `V-01` 已废止）
+  - 缺陷根因：已在 `0.4.2` 修复；0.4.1 及更早版本仅检查 `column_editable_list`
+  - 临时阻断要求（运维/管理）：对 0.4.1 及更早的部署：若模型需全局只读，务必在 ModelView 中将 `column_editable_list` 显式置空 `()`，不要仅依赖 `can_edit = False`。
 
 ## 1. 范围与威胁模型
 
@@ -95,29 +80,71 @@
 
 ### 1.2 资产
 
-| 资产 | 位置 | 泄露/篡改影响 |
-| --- | --- | --- |
-| 用户密码哈希 | `users.password` | 离线破解、撞库 |
-| 会话 | Flask signed cookie（`_user_id` 等） | 账号接管 |
-| `SECRET_KEY` | 配置/环境 | 伪造会话、令牌、CSRF |
-| `JWT_SECRET_KEY` | 配置/环境 | 伪造 Bearer token |
-| 邮箱/重置令牌 | URL query、邮件 | 账号接管、邮箱变更 |
-| TOTP secret | `users.totp_secret`（AES-GCM 加密） | 生成 2FA 验证码 |
-| 恢复码 | `users.recovery_codes`（哈希） | 绕过 TFA |
-| Admin 数据 | 数据库/后台 | 数据泄露、篡改、删除 |
-| SMTP 凭据 | `NOREPLY_EMAIL_SENDER` | 冒名发信、钓鱼 |
+- **用户密码哈希**
+  - 位置：`users.password`
+  - 泄露/篡改影响：离线破解、撞库
+
+- **会话**
+  - 位置：Flask signed cookie（`_user_id` 等）
+  - 泄露/篡改影响：账号接管
+
+- `SECRET_KEY`
+  - 位置：配置/环境
+  - 泄露/篡改影响：伪造会话、令牌、CSRF
+
+- `JWT_SECRET_KEY`
+  - 位置：配置/环境
+  - 泄露/篡改影响：伪造 Bearer token
+
+- **邮箱/重置令牌**
+  - 位置：URL query、邮件
+  - 泄露/篡改影响：账号接管、邮箱变更
+
+- **TOTP secret**
+  - 位置：`users.totp_secret`（AES-GCM 加密）
+  - 泄露/篡改影响：生成 2FA 验证码
+
+- **恢复码**
+  - 位置：`users.recovery_codes`（哈希）
+  - 泄露/篡改影响：绕过 TFA
+
+- **Admin 数据**
+  - 位置：数据库/后台
+  - 泄露/篡改影响：数据泄露、篡改、删除
+
+- **SMTP 凭据**
+  - 位置：`NOREPLY_EMAIL_SENDER`
+  - 泄露/篡改影响：冒名发信、钓鱼
 
 ### 1.3 参与者与信任边界
 
-| 参与者 | 能力 | 信任假设 |
-| --- | --- | --- |
-| 匿名访问者 | 访问公开页面、登录/注册/找回 | 不可信 |
-| 普通用户 | 登录、管理自己的资料 | 已通过密码认证 |
-| Admin | 访问 Admin 模型视图、批量操作、导出 | 高权限，必须重点保护 |
-| 被禁用用户 | 旧 session 在下一次请求即失效（`user_loader` 返回 `None` 并清理 session） | 不应访问任何登录保护页 |
-| 数据库读取者 | 读取表数据 | 不应能直接伪造 TOTP/密码 |
-| 网络攻击者 | 窃听、篡改、重放 | HTTPS 应阻止 |
-| 邮件拦截者 | 获取令牌链接 | 令牌必须有 TTL 且可失效 |
+- **匿名访问者**
+  - 能力：访问公开页面、登录/注册/找回
+  - 信任假设：不可信
+
+- **普通用户**
+  - 能力：登录、管理自己的资料
+  - 信任假设：已通过密码认证
+
+- **Admin**
+  - 能力：访问 Admin 模型视图、批量操作、导出
+  - 信任假设：高权限，必须重点保护
+
+- **被禁用用户**
+  - 能力：旧 session 在下一次请求即失效（`user_loader` 返回 `None` 并清理 session）
+  - 信任假设：不应访问任何登录保护页
+
+- **数据库读取者**
+  - 能力：读取表数据
+  - 信任假设：不应能直接伪造 TOTP/密码
+
+- **网络攻击者**
+  - 能力：窃听、篡改、重放
+  - 信任假设：HTTPS 应阻止
+
+- **邮件拦截者**
+  - 能力：获取令牌链接
+  - 信任假设：令牌必须有 TTL 且可失效
 
 信任边界：
 
@@ -138,12 +165,10 @@
 
 ### 1.5 风险等级
 
-| 等级 | 含义 |
-| --- | --- |
-| 高 | 可导致账号接管、权限提升或大规模数据泄露；公网部署前必须处理或明确接受 |
-| 中 | 需要特定条件或组合利用；应尽快修复/补偿 |
-| 低 | defense-in-depth、信息泄露或运维风险；按计划处理 |
-| 信息 | 设计取舍或文档差异，不直接构成漏洞 |
+- **高**：可导致账号接管、权限提升或大规模数据泄露；公网部署前必须处理或明确接受
+- **中**：需要特定条件或组合利用；应尽快修复/补偿
+- **低**：defense-in-depth、信息泄露或运维风险；按计划处理
+- **信息**：设计取舍或文档差异，不直接构成漏洞
 
 ## 2. 安全架构与密钥
 
@@ -184,13 +209,25 @@ def derive_key(secret_key, purpose):
     return hmac.digest(secret_key, context, "sha256")
 ```
 
-| 用途 | 算法/结果 | 使用位置 |
-| --- | --- | --- |
-| `hasher` | HMAC-SHA256 派生密钥 + BLAKE2b（16 字节摘要） | 邮箱、已存储密码哈希的指纹、恢复码；用户密码存储算法见第 5.1 节 |
-| `url-token` | HMAC-SHA256 派生密钥 + itsdangerous | 邮箱验证、改邮箱、重置密码令牌 |
-| `encryptor` | HMAC-SHA256 派生密钥（32 字节）+ AES-256-GCM | TOTP secret |
-| `csrf` | 派生密钥或 `CSRF_SECRET_KEY` | CSRF token 签名 |
-| JWT | `JWT_SECRET_KEY`（独立配置） | Bearer token |
+- `hasher`
+  - 算法/结果：HMAC-SHA256 派生密钥 + BLAKE2b（16 字节摘要）
+  - 使用位置：邮箱、已存储密码哈希的指纹、恢复码；用户密码存储算法见第 5.1 节
+
+- `url-token`
+  - 算法/结果：HMAC-SHA256 派生密钥 + itsdangerous
+  - 使用位置：邮箱验证、改邮箱、重置密码令牌
+
+- `encryptor`
+  - 算法/结果：HMAC-SHA256 派生密钥（32 字节）+ AES-256-GCM
+  - 使用位置：TOTP secret
+
+- `csrf`
+  - 算法/结果：派生密钥或 `CSRF_SECRET_KEY`
+  - 使用位置：CSRF token 签名
+
+- **JWT**
+  - 算法/结果：`JWT_SECRET_KEY`（独立配置）
+  - 使用位置：Bearer token
 
 要点：
 
@@ -201,12 +238,10 @@ def derive_key(secret_key, purpose):
 
 ### 2.3 密钥轮换的影响
 
-| 轮换对象 | 影响 |
-| --- | --- |
-| `SECRET_KEY` | 现有 session、CSRF token、URL 令牌全部失效；**已加密的 TOTP secret 将无法解密**（当前无迁移机制） |
-| `CSRF_SECRET_KEY` | 现有 CSRF token 失效 |
-| `JWT_SECRET_KEY` | 现有 Bearer token 失效 |
-| 数据库中的 TOTP secret | 需要重新绑定 TFA；当前没有批量重加密工具 |
+- `SECRET_KEY`：现有 session、CSRF token、URL 令牌全部失效；**已加密的 TOTP secret 将无法解密**（当前无迁移机制）
+- `CSRF_SECRET_KEY`：现有 CSRF token 失效
+- `JWT_SECRET_KEY`：现有 Bearer token 失效
+- **数据库中的 TOTP secret**：需要重新绑定 TFA；当前没有批量重加密工具
 
 > 轮换 `SECRET_KEY` 前必须评估 TOTP 用户：要么先让用户重新绑定，要么提供一次性重加密迁移。当前代码没有自动迁移。
 
@@ -369,17 +404,41 @@ def allow(self, *args, **kwargs):
 
 ### 4.3 判定结果与风险
 
-| 场景 | 结果 | 说明 |
-| --- | --- | --- |
-| 匿名 + 普通视图（`allow_access=False`） | 拒绝 → 403 | Admin 模型视图默认行为 |
-| 匿名 + `@login_required` | 重定向登录 | `login_required` 在 `allow` 之前处理 |
-| 匿名 + `allow_access=True` | 放行 | 公开登录/注册/门户 |
-| 普通用户 + 无角色 | 拒绝 | 默认拒绝 |
-| 普通用户 + `role_need` 匹配 | 放行 | 需 active |
-| `super_admin` + active | 放行 | active 检查在最后一步之前 |
-| `super_admin` + inactive | 拒绝 | 会先被 active 检查拦截 |
-| **`admin` + inactive** | **拒绝** | 先检查 `is_active`，再判断 `admin` |
-| `admin` + 任意视图（active） | 放行 | 高权限，需重点保护 |
+- **匿名 + 普通视图（`allow_access=False`）**
+  - 结果：拒绝 → 403
+  - 说明：Admin 模型视图默认行为
+
+- **匿名 + `@login_required`**
+  - 结果：重定向登录
+  - 说明：`login_required` 在 `allow` 之前处理
+
+- **匿名 + `allow_access=True`**
+  - 结果：放行
+  - 说明：公开登录/注册/门户
+
+- **普通用户 + 无角色**
+  - 结果：拒绝
+  - 说明：默认拒绝
+
+- **普通用户 + `role_need` 匹配**
+  - 结果：放行
+  - 说明：需 active
+
+- `super_admin` + active
+  - 结果：放行
+  - 说明：active 检查在最后一步之前
+
+- `super_admin` + inactive
+  - 结果：拒绝
+  - 说明：会先被 active 检查拦截
+
+- **`admin` + inactive**
+  - 结果：**拒绝**
+  - 说明：先检查 `is_active`，再判断 `admin`
+
+- `admin` + 任意视图（active）
+  - 结果：放行
+  - 说明：高权限，需重点保护
 
 **SEC-01（高，已在 0.4.2 修复）**：`0.4.2` 已把 `is_active` 检查移到 `admin` 角色判断之前；`is_active=False` 的管理员访问 Admin 返回 403，公开 `allow_access` 视图行为不变。回归测试见 `tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`。
 
@@ -426,13 +485,11 @@ class UserMixin(FlaskLoginUserMixin):
 
 ### 5.2 表单密码策略
 
-| 表单 | 规则 |
-| --- | --- |
-| 注册 | 密码 8–50；重复密码必须一致；用户名 6–50 |
-| 修改密码 | 旧密码 3–50；新密码 8–50；重复一致 |
-| 重置密码 | 新密码 8–50；重复一致 |
-| 改邮箱 | 当前密码 3–50 |
-| 登录 | 仅 `DataRequired`，无长度限制 |
+- **注册**：密码 8–50；重复密码必须一致；用户名 6–50
+- **修改密码**：旧密码 3–50；新密码 8–50；重复一致
+- **重置密码**：新密码 8–50；重复一致
+- **改邮箱**：当前密码 3–50
+- **登录**：仅 `DataRequired`，无长度限制
 
 **缺口（SEC-06，中；基于 2026-11-07 快照，当前未复核）**：
 
@@ -463,11 +520,26 @@ class UserMixin(FlaskLoginUserMixin):
 
 ### 6.1 令牌类型
 
-| 流程 | serializer | 邮件 `type` | 链接字段 | 令牌字段 | 默认有效期 |
-| --- | --- | --- | --- | --- | --- |
-| 邮箱验证 | `verify_email` | `verify_email` | `verification_link` | `verification_token` | 7 天 |
-| 改邮箱 | `change_email` | `verify_email` | `verification_link` | `verification_token` | 7 天 |
-| 重置密码 | `reset_password` | `reset_password` | `reset_password_link` | `reset_password_token` | 30 分钟 |
+- **邮箱验证**
+  - serializer：`verify_email`
+  - 邮件 `type`：`verify_email`
+  - 链接字段：`verification_link`
+  - 令牌字段：`verification_token`
+  - 默认有效期：7 天
+
+- **改邮箱**
+  - serializer：`change_email`
+  - 邮件 `type`：`verify_email`
+  - 链接字段：`verification_link`
+  - 令牌字段：`verification_token`
+  - 默认有效期：7 天
+
+- **重置密码**
+  - serializer：`reset_password`
+  - 邮件 `type`：`reset_password`
+  - 链接字段：`reset_password_link`
+  - 令牌字段：`reset_password_token`
+  - 默认有效期：30 分钟
 
 `get_within()`：
 
@@ -587,12 +659,21 @@ csrf_token = s.dumps(session[csrf_field_name])
 
 ### 7.2 配置
 
-| 配置 | 默认 | 安全建议 |
-| --- | --- | --- |
-| `CSRF_ENABLED` | `True` | 生产保持 `True` |
-| `CSRF_SECRET_KEY` | 派生 | 可选独立密钥；轮换会使现有 token 失效 |
-| `CSRF_FIELD_NAME` | `csrf_token` | 不要随意改名，前后端需一致 |
-| `CSRF_TIME_LIMIT` | `1800` | 按业务调整；越长暴露窗口越大 |
+- `CSRF_ENABLED`
+  - 默认：`True`
+  - 安全建议：生产保持 `True`
+
+- `CSRF_SECRET_KEY`
+  - 默认：派生
+  - 安全建议：可选独立密钥；轮换会使现有 token 失效
+
+- `CSRF_FIELD_NAME`
+  - 默认：`csrf_token`
+  - 安全建议：不要随意改名，前后端需一致
+
+- `CSRF_TIME_LIMIT`
+  - 默认：`1800`
+  - 安全建议：按业务调整；越长暴露窗口越大
 
 > 测试 `tests/conftest.py` 默认 `CSRF_ENABLED=False`，仅用于简化测试；不要把测试配置带到生产。
 
@@ -607,14 +688,12 @@ csrf_token = s.dumps(session[csrf_field_name])
 
 库不设置安全响应头；生产应在反向代理/应用层补充：
 
-| 响应头 | 建议 |
-| --- | --- |
-| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains`（确认全站 HTTPS 后） |
-| `Content-Security-Policy` | 按实际资源收紧；至少限制 `frame-ancestors` |
-| `X-Frame-Options` | `DENY` 或 `SAMEORIGIN` |
-| `X-Content-Type-Options` | `nosniff` |
-| `Referrer-Policy` | `no-referrer` 或 `strict-origin-when-cross-origin` |
-| `Permissions-Policy` | 按需关闭不需要的浏览器能力 |
+- `Strict-Transport-Security`：`max-age=31536000; includeSubDomains`（确认全站 HTTPS 后）
+- `Content-Security-Policy`：按实际资源收紧；至少限制 `frame-ancestors`
+- `X-Frame-Options`：`DENY` 或 `SAMEORIGIN`
+- `X-Content-Type-Options`：`nosniff`
+- `Referrer-Policy`：`no-referrer` 或 `strict-origin-when-cross-origin`
+- `Permissions-Policy`：按需关闭不需要的浏览器能力
 
 ### 7.5 开放重定向防护
 
@@ -678,13 +757,25 @@ def get_totp_secret(self):
 
 ### 8.2 启用 / 关闭 / 重绑
 
-| 操作 | 要求 | 说明 |
-| --- | --- | --- |
-| `setup_tfa` | 登录 + active | 生成/返回 TOTP secret 与 provisioning URI；页面 no-cache |
-| `enable_tfa` | 登录 + active + 有效 TOTP | 启用后设置 `SESSION_KEY_TFA_VERIFIED=True` |
-| 关闭 TFA | 登录 + active + 有效 TOTP | 清空 `totp_secret` 与 TFA session 标记 |
-| `rebind_tfa` | 登录 + active + `tfa_verified` + `tfa_recovery` | 用于恢复码登录后重新绑定 authenticator |
-| `recovery_codes` | 登录 + active + `tfa_verified` | 生成并展示一次恢复码；数据库只存哈希 |
+- `setup_tfa`
+  - 要求：登录 + active
+  - 说明：生成/返回 TOTP secret 与 provisioning URI；页面 no-cache
+
+- `enable_tfa`
+  - 要求：登录 + active + 有效 TOTP
+  - 说明：启用后设置 `SESSION_KEY_TFA_VERIFIED=True`
+
+- **关闭 TFA**
+  - 要求：登录 + active + 有效 TOTP
+  - 说明：清空 `totp_secret` 与 TFA session 标记
+
+- `rebind_tfa`
+  - 要求：登录 + active + `tfa_verified` + `tfa_recovery`
+  - 说明：用于恢复码登录后重新绑定 authenticator
+
+- `recovery_codes`
+  - 要求：登录 + active + `tfa_verified`
+  - 说明：生成并展示一次恢复码；数据库只存哈希
 
 注意：
 
@@ -702,12 +793,21 @@ def get_totp_secret(self):
 
 ### 8.4 TFA 缺口
 
-| 缺口 | 等级 | 说明 |
-| --- | --- | --- |
-| JWT 绕过 TFA | 高（启用 JWT 时） | `load_user_from_request` 只检查 active，不检查 TFA（SEC-02） |
-| 无限流/锁定 | 高（公网） | 6 位 TOTP 可被在线暴力尝试；`0.4.2` 已加入内置失败锁定，仍缺注册/找回入口限流与验证码（SEC-03） |
-| 无 TOTP 重放防护 | 低-中 | 同一 30 秒窗口内验证码可重复使用；pyotp 默认窗口 |
-| `TFA_EXEMPT_ENDPOINTS` 未实现 | 中 | `flask-exts/docs/configure.rst` 有文档，代码中无引用（SEC-04） |
+- **JWT 绕过 TFA**
+  - 等级：高（启用 JWT 时）
+  - 说明：`load_user_from_request` 只检查 active，不检查 TFA（SEC-02）
+
+- **无限流/锁定**
+  - 等级：高（公网）
+  - 说明：6 位 TOTP 可被在线暴力尝试；`0.4.2` 已加入内置失败锁定，仍缺注册/找回入口限流与验证码（SEC-03）
+
+- **无 TOTP 重放防护**
+  - 等级：低-中
+  - 说明：同一 30 秒窗口内验证码可重复使用；pyotp 默认窗口
+
+- `TFA_EXEMPT_ENDPOINTS` 未实现
+  - 等级：中
+  - 说明：`flask-exts/docs/configure.rst` 有文档，代码中无引用（SEC-04）
 
 建议：
 
@@ -720,10 +820,13 @@ def get_totp_secret(self):
 
 `main` 在 `users` 表上新增两个字段，并在 `SqlaUserStore` 中实现账号级失败计数：
 
-| 字段 | 类型 | 作用 |
-| --- | --- | --- |
-| `failed_login_count` | `int NOT NULL DEFAULT 0` | 连续失败次数，密码错误与第二因子错误共用 |
-| `locked_until` | `timestamp NULL` | 锁定截止时间，过期后自动恢复 |
+- `failed_login_count`
+  - 类型：`int NOT NULL DEFAULT 0`
+  - 作用：连续失败次数，密码错误与第二因子错误共用
+
+- `locked_until`
+  - 类型：`timestamp NULL`
+  - 作用：锁定截止时间，过期后自动恢复
 
 行为：
 
@@ -795,14 +898,29 @@ if "Authorization" in request.headers:
 
 ### 9.3 JWT 缺口
 
-| 缺口 | 等级 | 说明 |
-| --- | --- | --- |
-| 不检查 TFA | 高（启用 JWT 时） | 启用 TFA 的用户仍可用 Bearer token 直接访问（SEC-02） |
-| 密码变更不失效 | 中 | JWT 不包含密码指纹，改密后旧 token 仍有效至过期（SEC-08） |
-| 无撤销列表 | 中 | 无法主动吊销单个 token；只能轮换 `JWT_SECRET_KEY`（全部失效） |
-| 无 audience/issuer | 中 | 多服务共享密钥时可能被跨服务重放 |
-| `JWT_SECRET_KEY` 未设置时 | 中 | demo 未配置；调用 JWT 功能会失败，需显式配置 |
-| `JWT_HASH` 可配置 | 低 | 必须限制为可信算法（HS256/RS256 等），不要让用户输入控制 |
+- **不检查 TFA**
+  - 等级：高（启用 JWT 时）
+  - 说明：启用 TFA 的用户仍可用 Bearer token 直接访问（SEC-02）
+
+- **密码变更不失效**
+  - 等级：中
+  - 说明：JWT 不包含密码指纹，改密后旧 token 仍有效至过期（SEC-08）
+
+- **无撤销列表**
+  - 等级：中
+  - 说明：无法主动吊销单个 token；只能轮换 `JWT_SECRET_KEY`（全部失效）
+
+- **无 audience/issuer**
+  - 等级：中
+  - 说明：多服务共享密钥时可能被跨服务重放
+
+- `JWT_SECRET_KEY` 未设置时
+  - 等级：中
+  - 说明：demo 未配置；调用 JWT 功能会失败，需显式配置
+
+- `JWT_HASH` 可配置
+  - 等级：低
+  - 说明：必须限制为可信算法（HS256/RS256 等），不要让用户输入控制
 
 建议：
 
@@ -816,28 +934,67 @@ if "Authorization" in request.headers:
 
 ### 10.1 必需配置
 
-| 配置 | 要求 | 说明 |
-| --- | --- | --- |
-| `SECRET_KEY` | 必填，强随机 | 派生会话/CSRF/令牌/加密密钥 |
-| `SQLALCHEMY_DATABASE_URI` | 必填 | 数据库连接；生产使用受控账号 |
-| `JWT_SECRET_KEY` | 使用 JWT 时必填 | 独立于 `SECRET_KEY` |
-| `NOREPLY_EMAIL_SENDER` | 使用邮件流程时必填 | SMTP 配置；凭据放环境变量/密钥管理 |
+- `SECRET_KEY`
+  - 要求：必填，强随机
+  - 说明：派生会话/CSRF/令牌/加密密钥
+
+- `SQLALCHEMY_DATABASE_URI`
+  - 要求：必填
+  - 说明：数据库连接；生产使用受控账号
+
+- `JWT_SECRET_KEY`
+  - 要求：使用 JWT 时必填
+  - 说明：独立于 `SECRET_KEY`
+
+- `NOREPLY_EMAIL_SENDER`
+  - 要求：使用邮件流程时必填
+  - 说明：SMTP 配置；凭据放环境变量/密钥管理
 
 ### 10.2 推荐配置
 
-| 配置 | 推荐值 | 说明 |
-| --- | --- | --- |
-| `CSRF_ENABLED` | `True` | 生产保持开启 |
-| `CSRF_SECRET_KEY` | 独立随机值 | 可选；不设置则从 `SECRET_KEY` 派生 |
-| `CSRF_TIME_LIMIT` | `1800` | 按业务调整 |
-| `RESET_PASSWORD_MAX_AGE` | `1800` | 重置令牌 30 分钟 |
-| `VERIFY_EMAIL_MAX_AGE` | 短于 7 天 | 邮箱验证令牌 |
-| `CHANGE_EMAIL_MAX_AGE` | 短于 7 天 | 改邮箱令牌 |
-| `JWT_ACCESS_TOKEN_MAX_AGE` | `900` 或更短 | API token |
-| `JWT_HASH` | `HS256`（或固定白名单） | 不要动态接受用户输入 |
-| `APP_NAME` | 真实应用名 | TOTP issuer |
-| `SESSION_COOKIE_*` / `REMEMBER_COOKIE_*` | 见 3.3 | Secure/HttpOnly/SameSite |
-| `TFA_EXEMPT_ENDPOINTS` | **当前未实现** | 文档有描述，代码未读取（SEC-04） |
+- `CSRF_ENABLED`
+  - 推荐值：`True`
+  - 说明：生产保持开启
+
+- `CSRF_SECRET_KEY`
+  - 推荐值：独立随机值
+  - 说明：可选；不设置则从 `SECRET_KEY` 派生
+
+- `CSRF_TIME_LIMIT`
+  - 推荐值：`1800`
+  - 说明：按业务调整
+
+- `RESET_PASSWORD_MAX_AGE`
+  - 推荐值：`1800`
+  - 说明：重置令牌 30 分钟
+
+- `VERIFY_EMAIL_MAX_AGE`
+  - 推荐值：短于 7 天
+  - 说明：邮箱验证令牌
+
+- `CHANGE_EMAIL_MAX_AGE`
+  - 推荐值：短于 7 天
+  - 说明：改邮箱令牌
+
+- `JWT_ACCESS_TOKEN_MAX_AGE`
+  - 推荐值：`900` 或更短
+  - 说明：API token
+
+- `JWT_HASH`
+  - 推荐值：`HS256`（或固定白名单）
+  - 说明：不要动态接受用户输入
+
+- `APP_NAME`
+  - 推荐值：真实应用名
+  - 说明：TOTP issuer
+
+- `SESSION_COOKIE_*` / `REMEMBER_COOKIE_*`
+  - 推荐值：见 3.3
+  - 说明：Secure/HttpOnly/SameSite
+
+- `TFA_EXEMPT_ENDPOINTS`
+  - 推荐值：**当前未实现**
+  - 说明：文档有描述，代码未读取（SEC-04）
 
 ### 10.3 禁止配置
 
@@ -851,12 +1008,25 @@ if "Authorization" in request.headers:
 
 ### 10.4 密钥轮换决策表
 
-| 场景 | 操作 | 影响 | 建议 |
-| --- | --- | --- | --- |
-| 怀疑 `SECRET_KEY` 泄露 | 轮换 `SECRET_KEY` | 所有 session/CSRF/URL 令牌失效；TOTP secret 无法解密 | 先评估 TOTP 用户，准备重绑/重加密；强制全员重新登录 |
-| 仅怀疑 CSRF 密钥 | 轮换 `CSRF_SECRET_KEY` | 现有 CSRF token 失效 | 低风险，可随时轮换 |
-| 怀疑 JWT 密钥 | 轮换 `JWT_SECRET_KEY` | 所有 JWT 失效 | 通知 API 客户端重新登录 |
-| 常规密钥轮换 | 按周期轮换 | 同上 | 建立迁移/通知流程 |
+- **怀疑 `SECRET_KEY` 泄露**
+  - 操作：轮换 `SECRET_KEY`
+  - 影响：所有 session/CSRF/URL 令牌失效；TOTP secret 无法解密
+  - 建议：先评估 TOTP 用户，准备重绑/重加密；强制全员重新登录
+
+- **仅怀疑 CSRF 密钥**
+  - 操作：轮换 `CSRF_SECRET_KEY`
+  - 影响：现有 CSRF token 失效
+  - 建议：低风险，可随时轮换
+
+- **怀疑 JWT 密钥**
+  - 操作：轮换 `JWT_SECRET_KEY`
+  - 影响：所有 JWT 失效
+  - 建议：通知 API 客户端重新登录
+
+- **常规密钥轮换**
+  - 操作：按周期轮换
+  - 影响：同上
+  - 建议：建立迁移/通知流程
 
 ### 10.5 生产反向代理配置参考（Nginx）
 
@@ -907,27 +1077,119 @@ server {
 
 > 本轮已对照 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 静态核实 SEC-01/02/05/17/18/19 的代码观察；其中 SEC-01、SEC-05、SEC-13、SEC-16、SEC-17、SEC-18 与 SEC-19 已在 `0.4.2` 修复，SEC-03 已加入账号级失败锁定（部分修复）；其余风险按各条现有证据边界标记。等级基于“公网 + 默认配置”假设，实际影响取决于部署；这不是完整安全审计或渗透测试。
 
-| ID | 等级 | 位置 | 现状 | 建议 |
-| --- | --- | --- | --- | --- |
-| SEC-01 | 高（已在 0.4.2 修复） | `security/authorizer/simple_authorizer.py` | `is_active` 检查已移到 `admin` 角色判断之前；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` 覆盖 | 已发布 0.4.1 及更早版本的部署仍需同时移除 admin 角色 |
-| SEC-02 | 高（启用 JWT） | `builtin_extensions/login_ext.py::load_user_from_request` | JWT 只检查 `is_active`，不检查 TFA | 在 JWT 中携带 `amr`/`tfa` 声明并校验，或返回前强制 TFA |
-| SEC-03 | 高（部分修复，已在 0.4.2 发布） | 登录/注册/找回/TFA/恢复码 | `main` 已实现账号级失败锁定（`users.failed_login_count` + `locked_until`，密码与 TFA 共享计数、指数退避）；仍缺 IP 维度、未知用户名计数与注册/找回入口限流 | 反向代理/WAF 按 IP 限流，与内置账号锁定叠加 |
-| SEC-04 | 中 | `flask-exts/docs/configure.rst` vs 代码 | `TFA_EXEMPT_ENDPOINTS` 有文档但未实现 | 实现该配置，或从文档移除并说明 |
-| SEC-05 | 中（已修复） | `usercenter/forms/register.py` | 注册邮箱已使用 `DataRequired()` + `Email()` + `Length(max=254)`；`test_register_rejects_invalid_email` 覆盖非法格式且不创建用户 | 保持 `Email()` 与改邮箱表单一致；投递性检查默认关闭 |
-| SEC-06 | 中 | 密码策略/表单 | 快照未见常见或泄露密码阻断；服务端 API 可绕过表单长度限制（当前未复核） | 按适用标准评估阻断要求并统一校验；不默认要求字符组合 |
-| SEC-07 | 中 | `security/keys.py` + `encryptor` | 轮换 `SECRET_KEY` 会使 TOTP secret 无法解密 | 提供重加密迁移或提前重绑 |
-| SEC-08 | 中 | `login_ext.py` | JWT 不随密码变更失效 | 加入 `token_version` 或缩短 TTL |
-| SEC-09 | 低-中 | 邮件令牌 | 令牌在 URL query，可能进 Referer/日志 | `Referrer-Policy: no-referrer`、日志脱敏、短 TTL |
-| SEC-10 | 低-中 | 注册/改邮箱 | 重复邮箱/用户名可枚举 | 统一提示或接受取舍并记录 |
-| SEC-11 | 中 | 全局 | 无安全审计日志（登录失败、TFA 失败、密码变更、管理员操作） | 接入结构化日志/审计系统 |
-| SEC-12 | 中 | 部署 | 未默认设置安全 Cookie/响应头 | 按 3.3/7.4 显式配置 |
-| SEC-13 | 低（已在 0.4.2 修复） | `user_view.py::recovery` | 只接受 `hasher.verify` 的哈希校验，明文兼容分支已移除；`test_plaintext_recovery_codes_are_rejected` 覆盖 | 已发布版本仍接受明文兼容值 |
-| SEC-14 | 低 | 用户模型 | `status`、`expired_at` 字段未使用 | 实现或移除，避免误以为已生效 |
-| SEC-15 | 信息 | Admin 视图 | 匿名访问模型视图返回 403，不是登录重定向 | 需要跳转登录时加 `@login_required` |
-| SEC-16 | 中（已在 0.4.2 修复） | `usercenter/user_view.py::enable_tfa`、`rebind_tfa` | 关闭 TFA 与重绑 authenticator 均清空 `recovery_codes`；`test_tfa`、`test_recovery` 覆盖 | 已发布版本旧恢复码仍可能有效 |
-| SEC-17 | 中-高（已在 0.4.2 修复） | `emailer/smtp.py::SmtpSSL` | 显式传入 `ssl.create_default_context()`（`CERT_REQUIRED` + `check_hostname=True`）；TLS 失败包装与 context 开关均有测试覆盖 | 私有 CA 配置到信任库；监控发信失败率 |
-| SEC-18 | 中（已在 0.4.2 修复） | `emailer/base.py::send_email` | 找不到 sender 时只记录 `type` 与脱敏收件人，不输出链接/令牌；`test_missing_sender_warning_redacts_payload` 覆盖 | 已发布版本仍需限制日志访问并过滤敏感载荷 |
-| SEC-19（V-01 别名） | 中（已在 0.4.2 修复） | `admin/model/view.py::ajax_update` | `can_edit=False` 时返回 403；`test_ajax_update_requires_can_edit` 覆盖 | 已发布版本仍需将 `column_editable_list` 置空 |
+- `SEC-01`
+  - 等级：高（已在 0.4.2 修复）
+  - 位置：`security/authorizer/simple_authorizer.py`
+  - 现状：`is_active` 检查已移到 `admin` 角色判断之前；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` 覆盖
+  - 建议：已发布 0.4.1 及更早版本的部署仍需同时移除 admin 角色
+
+- `SEC-02`
+  - 等级：高（启用 JWT）
+  - 位置：`builtin_extensions/login_ext.py::load_user_from_request`
+  - 现状：JWT 只检查 `is_active`，不检查 TFA
+  - 建议：在 JWT 中携带 `amr`/`tfa` 声明并校验，或返回前强制 TFA
+
+- `SEC-03`
+  - 等级：高（部分修复，已在 0.4.2 发布）
+  - 位置：登录/注册/找回/TFA/恢复码
+  - 现状：`main` 已实现账号级失败锁定（`users.failed_login_count` + `locked_until`，密码与 TFA 共享计数、指数退避）；仍缺 IP 维度、未知用户名计数与注册/找回入口限流
+  - 建议：反向代理/WAF 按 IP 限流，与内置账号锁定叠加
+
+- `SEC-04`
+  - 等级：中
+  - 位置：`flask-exts/docs/configure.rst` vs 代码
+  - 现状：`TFA_EXEMPT_ENDPOINTS` 有文档但未实现
+  - 建议：实现该配置，或从文档移除并说明
+
+- `SEC-05`
+  - 等级：中（已修复）
+  - 位置：`usercenter/forms/register.py`
+  - 现状：注册邮箱已使用 `DataRequired()` + `Email()` + `Length(max=254)`；`test_register_rejects_invalid_email` 覆盖非法格式且不创建用户
+  - 建议：保持 `Email()` 与改邮箱表单一致；投递性检查默认关闭
+
+- `SEC-06`
+  - 等级：中
+  - 位置：密码策略/表单
+  - 现状：快照未见常见或泄露密码阻断；服务端 API 可绕过表单长度限制（当前未复核）
+  - 建议：按适用标准评估阻断要求并统一校验；不默认要求字符组合
+
+- `SEC-07`
+  - 等级：中
+  - 位置：`security/keys.py` + `encryptor`
+  - 现状：轮换 `SECRET_KEY` 会使 TOTP secret 无法解密
+  - 建议：提供重加密迁移或提前重绑
+
+- `SEC-08`
+  - 等级：中
+  - 位置：`login_ext.py`
+  - 现状：JWT 不随密码变更失效
+  - 建议：加入 `token_version` 或缩短 TTL
+
+- `SEC-09`
+  - 等级：低-中
+  - 位置：邮件令牌
+  - 现状：令牌在 URL query，可能进 Referer/日志
+  - 建议：`Referrer-Policy: no-referrer`、日志脱敏、短 TTL
+
+- `SEC-10`
+  - 等级：低-中
+  - 位置：注册/改邮箱
+  - 现状：重复邮箱/用户名可枚举
+  - 建议：统一提示或接受取舍并记录
+
+- `SEC-11`
+  - 等级：中
+  - 位置：全局
+  - 现状：无安全审计日志（登录失败、TFA 失败、密码变更、管理员操作）
+  - 建议：接入结构化日志/审计系统
+
+- `SEC-12`
+  - 等级：中
+  - 位置：部署
+  - 现状：未默认设置安全 Cookie/响应头
+  - 建议：按 3.3/7.4 显式配置
+
+- `SEC-13`
+  - 等级：低（已在 0.4.2 修复）
+  - 位置：`user_view.py::recovery`
+  - 现状：只接受 `hasher.verify` 的哈希校验，明文兼容分支已移除；`test_plaintext_recovery_codes_are_rejected` 覆盖
+  - 建议：已发布版本仍接受明文兼容值
+
+- `SEC-14`
+  - 等级：低
+  - 位置：用户模型
+  - 现状：`status`、`expired_at` 字段未使用
+  - 建议：实现或移除，避免误以为已生效
+
+- `SEC-15`
+  - 等级：信息
+  - 位置：Admin 视图
+  - 现状：匿名访问模型视图返回 403，不是登录重定向
+  - 建议：需要跳转登录时加 `@login_required`
+
+- `SEC-16`
+  - 等级：中（已在 0.4.2 修复）
+  - 位置：`usercenter/user_view.py::enable_tfa`、`rebind_tfa`
+  - 现状：关闭 TFA 与重绑 authenticator 均清空 `recovery_codes`；`test_tfa`、`test_recovery` 覆盖
+  - 建议：已发布版本旧恢复码仍可能有效
+
+- `SEC-17`
+  - 等级：中-高（已在 0.4.2 修复）
+  - 位置：`emailer/smtp.py::SmtpSSL`
+  - 现状：显式传入 `ssl.create_default_context()`（`CERT_REQUIRED` + `check_hostname=True`）；TLS 失败包装与 context 开关均有测试覆盖
+  - 建议：私有 CA 配置到信任库；监控发信失败率
+
+- `SEC-18`
+  - 等级：中（已在 0.4.2 修复）
+  - 位置：`emailer/base.py::send_email`
+  - 现状：找不到 sender 时只记录 `type` 与脱敏收件人，不输出链接/令牌；`test_missing_sender_warning_redacts_payload` 覆盖
+  - 建议：已发布版本仍需限制日志访问并过滤敏感载荷
+
+- `SEC-19`（旧别名 `V-01` 已废止）
+  - 等级：中（已在 0.4.2 修复）
+  - 位置：`admin/model/view.py::ajax_update`
+  - 现状：`can_edit=False` 时返回 403；`test_ajax_update_requires_can_edit` 覆盖
+  - 建议：已发布版本仍需将 `column_editable_list` 置空
 
 ## 12. 测试覆盖与缺口
 

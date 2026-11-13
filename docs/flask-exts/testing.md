@@ -1,6 +1,6 @@
 # Flask-Exts 测试方案（Test-Driven）
 
-> 本文是 [`spec.md`](./spec.md) 的**测试驱动配套文档**，独立维护。
+> 本文是 [`spec.md`](./spec.md) 的**测试驱动文档**，独立维护。
 >
 > | 项目 | 内容 |
 > | --- | --- |
@@ -9,35 +9,10 @@
 > | 最后更新 | 2026-11-13 |
 > | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核） |
 > | 适用仓库 | `flask-exts` |
-> | 文档驱动 | `architecture.md`：架构；`spec.md`：设计和实现，第 10 章涵盖 View/Admin 路由、ModelView、DataBackend、Inline、AJAX、导出 |
-> | 行为契约 | `requirements.md`：`REQ-*`、验收标准、追溯 |
-> | 测试驱动 | `testing.md`（本文）：测试策略、用例、执行计划、质量门禁 |
-> | 安全治理 | `security.md`：威胁模型、控制措施、风险清单、发布检查 |
 >
-> **文档状态说明**：本文的测试目录与数量以 2026-11-12 的 HEAD `a61169fbb85fd6c682b3b5fc99b45d8f08fdd23b`（v0.4.1 之后）为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
+> **文档状态说明**：本文的测试目录与数量以 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
 >
 > **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文中标记为目标的规划不代表已实现；当前 CI 实现范围见第 11 节。
-
-## 目录
-
-- [0. 快速开始](#0-快速开始)
-- [1. 测试现状盘点](#1-测试现状盘点)
-- [2. 测试策略与分层](#2-测试策略与分层)
-- [3. 测试目录与标记规划](#3-测试目录与标记规划)
-- [4. Fixtures 设计规范](#4-fixtures-设计规范)
-- [5. 测试数据与工厂](#5-测试数据与工厂)
-- [6. 测试覆盖矩阵](#6-测试覆盖矩阵)
-- [7. 详细测试用例设计](#7-详细测试用例设计)
-- [8. 端到端测试方案](#8-端到端测试方案)
-- [9. 性能测试方案](#9-性能测试方案)
-- [10. 覆盖率与质量门禁](#10-覆盖率与质量门禁)
-- [11. CI 流水线](#11-ci-流水线)
-- [12. 分阶段执行计划](#12-分阶段执行计划)
-- [13. 测试目标与现状对照](#13-测试目标与现状对照)
-- [14. 测试债务与改进清单](#14-测试债务与改进清单)
-- [15. 测试编写规范与检查清单](#15-测试编写规范与检查清单)
-- [16. 验收标准](#16-验收标准)
-- [17. 文档维护与更新](#17-文档维护与更新)
 
 ## 0. 快速开始
 
@@ -85,41 +60,67 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 
 ### 0.3 本文阅读顺序
 
-| 角色 | 建议顺序 |
-| --- | --- |
-| 第一次接触项目 | 0 → 1 → 2 → 3 → 4 |
-| 要写新测试 | 4 → 5 → 6 → 7 → 15 |
-| 要补 E2E / 性能 | 8 → 9 → 11 → 12 |
-| 要做质量门禁 | 10 → 11 → 16 |
-| 要修缺陷 | 相关契约与问题清单（`spec.md` 第 10.16 节 / `security.md` 第 11 节）→ 本文 7 → 12 |
+- **第一次接触项目**：0 → 1 → 2 → 3 → 4
+- **要写新测试**：4 → 5 → 6 → 7 → 15
+- **要补 E2E / 性能**：8 → 9 → 11 → 12
+- **要做质量门禁**：10 → 11 → 16
+- **要修缺陷**：相关契约与问题清单（`spec.md` 第 10.16 节 / `security.md` 第 11 节）→ 本文 7 → 12
 
 ### 0.4 状态图例
 
-| 标记 | 含义 |
-| --- | --- |
-| 现有 | 当前仓库已有测试 |
-| 待补 | 尚无测试，需要新增 |
-| 待修 | 已有测试但断言不足或未触发缺陷 |
-| 目标 | 目标结构，当前未落地 |
-| 规划 | 尚未进入执行计划 |
+- **现有**：当前仓库已有测试
+- **待补**：尚无测试，需要新增
+- **待修**：已有测试但断言不足或未触发缺陷
+- **目标**：目标结构，当前未落地
+- **规划**：尚未进入执行计划
 
 ## 1. 测试现状盘点
 
 ### 1.1 当前规模
 
-| 指标 | 当前值 | 说明 |
-| --- | --- | --- |
-| 测试文件 | 48 个 `test_*.py` | 全部位于 `tests/unit/` 与 `tests/integration/` |
-| 测试函数 | 235 个 | 以 `def test_...` 统计 |
-| 断言 | 约 1059 处 | 以 `assert` 统计，不含 `pytest.raises` 等 |
-| 测试框架 | pytest | `pyproject.toml` 配置 |
-| 覆盖率工具 | `pytest-cov` / `coverage` | 已列入 `dev` 组；`[tool.coverage.run] source = ["src/flask_exts"]` 只统计库代码；已测定基线，CI 每轮报告覆盖率，尚无 `fail-under` 门槛 |
-| E2E 目录 | 无 | `tests/e2e/` 尚未创建 |
-| 性能目录 | 无 | `tests/performance/` 尚未创建 |
-| 浏览器测试 | 无 | 未引入 Selenium/Playwright |
-| 基准工具 | 无 | 未引入 `pytest-benchmark` |
-| 数据工厂 | 无 | 未引入 `factory-boy` / `faker` |
-| 最近完整测试运行 | 274 passed | 2026-11-13；Python 3.13.5；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；无跳过用例 |
+- **测试文件**
+  - 当前值：48 个 `test_*.py`
+  - 说明：全部位于 `tests/unit/` 与 `tests/integration/`
+
+- **测试函数**
+  - 当前值：235 个
+  - 说明：以 `def test_...` 统计
+
+- **断言**
+  - 当前值：约 1059 处
+  - 说明：按 `\bassert\b` 全文匹配统计（复现脚本见第 1.5 节），不含 `pytest.raises`
+
+- **测试框架**
+  - 当前值：pytest
+  - 说明：`pyproject.toml` 配置
+
+- **覆盖率工具**
+  - 当前值：`pytest-cov` / `coverage`
+  - 说明：已列入 `dev` 组；`[tool.coverage.run] source = ["src/flask_exts"]` 只统计库代码；已测定基线，CI 每轮报告覆盖率，尚无 `fail-under` 门槛
+
+- **E2E 目录**
+  - 当前值：无
+  - 说明：`tests/e2e/` 尚未创建
+
+- **性能目录**
+  - 当前值：无
+  - 说明：`tests/performance/` 尚未创建
+
+- **浏览器测试**
+  - 当前值：无
+  - 说明：未引入 Selenium/Playwright
+
+- **基准工具**
+  - 当前值：无
+  - 说明：未引入 `pytest-benchmark`
+
+- **数据工厂**
+  - 当前值：无
+  - 说明：未引入 `factory-boy` / `faker`
+
+- **最近完整测试运行**
+  - 当前值：274 passed
+  - 说明：2026-11-13 复跑；Python 3.13.5；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；0 跳过；10.02s；命令 `uv run pytest -q -p no:cacheprovider`
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -128,33 +129,91 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 minversion = "8.0"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error::DeprecationWarning"]
 ```
 
 注意 `--strict-markers`：**新增 marker 必须注册**，否则测试会直接报错。
 
 ### 1.2 现有测试分布
 
-| 区域 | 测试函数数 | 主要文件 | 评价 |
-| --- | ---: | --- | --- |
-| `integration/admin` | 58 | 完整入口见 1.2.1 | 历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键、inactive admin、can_edit 边界；现状待核实 |
-| `unit/extension_core` | 32 | `test_registry.py`、`test_manager.py` | 覆盖依赖排序、循环依赖、幂等、关闭、异常隔离、内置扩展装配 |
-| `unit/admin` | 23 | `test_mockview.py`、`test_pagination.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py` | 覆盖视图元数据、格式化、分页 URL 编码，偏“配置读取” |
-| `unit/forms` | 23 | `test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py` | 覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补 |
-| `integration/usercenter` | 18 | `tests/integration/usercenter/test_user_view.py` | 覆盖注册、重复邮箱、非法注册邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、改密码、找回/重置、恢复码 |
-| `unit/datastore` | 14 | `test_db.py`、`test_query.py` | 覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖 |
-| `unit/security` | 10 | `tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py` | 授权包括 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行 |
-| `integration/builtin_extensions` | 8 | `test_login.py`、`test_admin_views.py` | 覆盖 JWT、蓝图、默认视图 |
-| `unit/builtin_extensions` | 8 | `test_babel.py`、`test_exts.py`、`test_frontend.py` | 覆盖 Babel、扩展注册、Jinja 全局 |
-| `integration/security` | 5 | `tests/integration/security/test_core.py` | 覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效 |
-| `integration/userstore` | 3 | `test_sqla_userstore.py` | 覆盖模型注册、基础 CRUD、角色；`get_users`/`remove_user` 未覆盖 |
-| `unit/emailer` | 3 | `test_base.py`、`test_smtp.py` | 基础信号路径、缺失 sender 的日志脱敏、校验证书/主机名的 context、发送头字段与 TLS 错误包装 |
-| `unit/frontend` | 9 | `test_plugin_manager.py`、`test_base.py`、宏测试 | 覆盖注册、排序、循环依赖、资源拼接 |
-| `commands` | 0 | 无 | CLI 完全未测试 |
+按 2026-11-13 的 HEAD `445b03d` 统计，各区域合计与第 1.1 节的 235 个测试函数一致。
+
+- `integration/admin`
+  - 测试函数数：57
+  - 主要文件：完整入口见 1.2.1
+  - 评价：历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键、inactive admin、can_edit 边界；现状待核实
+
+- `unit/forms`
+  - 测试函数数：35
+  - 主要文件：`test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py`
+  - 评价：覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补
+
+- `unit/extension_core`
+  - 测试函数数：32
+  - 主要文件：`test_registry.py`、`test_manager.py`
+  - 评价：覆盖依赖排序、循环依赖、幂等、关闭、异常隔离、内置扩展装配
+
+- `unit/admin`
+  - 测试函数数：23
+  - 主要文件：`test_mockview.py`、`test_pagination.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py`
+  - 评价：覆盖视图元数据、格式化、分页 URL 编码，偏“配置读取”
+
+- `integration/usercenter`
+  - 测试函数数：22
+  - 主要文件：`tests/integration/usercenter/test_user_view.py`
+  - 评价：覆盖注册、重复/非法邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、失败登录与失败 TFA 锁定/解锁、改密码、找回/重置、恢复码
+
+- `unit/datastore`
+  - 测试函数数：14
+  - 主要文件：`test_db.py`、`test_query.py`
+  - 评价：覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖
+
+- `unit/security`
+  - 测试函数数：10
+  - 主要文件：`tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py`
+  - 评价：授权包括 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行
+
+- `unit/frontend`
+  - 测试函数数：9
+  - 主要文件：`test_plugin_manager.py`、`test_base.py`、宏测试
+  - 评价：覆盖注册、排序、循环依赖、资源拼接
+
+- `integration/builtin_extensions`
+  - 测试函数数：8
+  - 主要文件：`test_login.py`、`test_admin_views.py`
+  - 评价：覆盖 JWT、蓝图、默认视图
+
+- `integration/userstore`
+  - 测试函数数：8
+  - 主要文件：`test_sqla_userstore.py`
+  - 评价：覆盖模型注册、基础 CRUD、角色与账号锁定（失败计数、成功登录清零、锁定过期、退避上限、非法策略）；`get_users`/`remove_user` 未覆盖
+
+- `unit/builtin_extensions`
+  - 测试函数数：8
+  - 主要文件：`test_babel.py`、`test_exts.py`、`test_frontend.py`
+  - 评价：覆盖 Babel、扩展注册、Jinja 全局
+
+- `integration/security`
+  - 测试函数数：5
+  - 主要文件：`tests/integration/security/test_core.py`
+  - 评价：覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效
+
+- `unit/emailer`
+  - 测试函数数：4
+  - 主要文件：`test_base.py`、`test_smtp.py`
+  - 评价：基础信号路径、缺失 sender 的日志脱敏、校验证书/主机名的 context、发送头字段与 TLS 错误包装
+
+- `commands`
+  - 测试函数数：0
+  - 主要文件：无
+  - 评价：CLI 完全未测试
 
 #### 1.2.1 Admin 测试文件清单
 
-以下文件路径已与 2026-11-12 的仓库 HEAD `a61169f` 核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
+以下文件路径已与 2026-11-13 的仓库 HEAD `445b03d` 核对；各文件的断言覆盖未逐项审计。文件名不证明相关断言存在或测试通过。
 
+- `tests/integration/admin/test_admin.py`
+- `tests/integration/admin/model/test_mockview.py`
 - `tests/integration/admin/sqla/test_views.py`
 - `tests/integration/admin/sqla/test_forms.py`
 - `tests/integration/admin/sqla/test_search.py`
@@ -171,18 +230,45 @@ addopts = "-ra --strict-markers --strict-config"
 
 ### 1.3 主要缺口
 
-| 缺口 | 影响 | 对应目标 |
-| --- | --- | --- |
-| 无 HTTP 级 E2E 流程测试 | 跨模块流程（注册→验证→登录→TFA）只能靠零散集成测试拼接 | 目标见第 13 节 |
-| 无性能基准 | 无法量化列表查询、搜索、渲染、认证的退化 | 目标见第 13 节 |
-| 覆盖率无 CI 门槛 | 覆盖率回退无法自动阻断 | 基线见第 10.5 节；`ci.yml` 已报告覆盖率，门槛见第 10.3 节 |
-| CI 未检查本套 Markdown 与 demo smoke | 外部文档死链、demo 启动问题不会被现有 CI 捕获 | 仓库 Sphinx 构建与测试 CI 已在 `docs.yml` / `ci.yml`；本套文档的链接检查与 demo smoke 仍待接入 |
-| 一对多搜索计数未断言 | `build_count` 重复计数风险可能潜伏 | 新增 |
-| Inline + AJAX 外键未覆盖 | `create_ajax_loader` 参数缺陷可能未被触发 | 新增 |
-| `UserStore.get_users` / `remove_user` 未覆盖 | 接口契约与实现不一致 | 新增 |
-| CLI 未覆盖 | 建表/建用户命令回归无保护 | 新增 |
-| 安全令牌过期测试被注释 | 过期路径没有自动化保护 | 新增 |
-| 无浏览器/JS 测试 | 前端插件、Tom Select、模态框等只能人工验证 | 可选 |
+- **无 HTTP 级 E2E 流程测试**
+  - 影响：跨模块流程（注册→验证→登录→TFA）只能靠零散集成测试拼接
+  - 对应目标：目标见第 13 节
+
+- **无性能基准**
+  - 影响：无法量化列表查询、搜索、渲染、认证的退化
+  - 对应目标：目标见第 13 节
+
+- **覆盖率无 CI 门槛**
+  - 影响：覆盖率回退无法自动阻断
+  - 对应目标：基线见第 10.5 节；`ci.yml` 已报告覆盖率，门槛见第 10.3 节
+
+- **CI 未检查本套 Markdown 与 demo smoke**
+  - 影响：外部文档死链、demo 启动问题不会被现有 CI 捕获
+  - 对应目标：仓库 Sphinx 构建与测试 CI 已在 `docs.yml` / `ci.yml`；本套文档的链接检查与 demo smoke 仍待接入
+
+- **一对多搜索计数未断言**
+  - 影响：`build_count` 重复计数风险可能潜伏
+  - 对应目标：新增
+
+- **Inline + AJAX 外键未覆盖**
+  - 影响：`create_ajax_loader` 参数缺陷可能未被触发
+  - 对应目标：新增
+
+- `UserStore.get_users` / `remove_user` 未覆盖
+  - 影响：接口契约与实现不一致
+  - 对应目标：新增
+
+- **CLI 未覆盖**
+  - 影响：建表/建用户命令回归无保护
+  - 对应目标：新增
+
+- **安全令牌过期测试被注释**
+  - 影响：过期路径没有自动化保护
+  - 对应目标：新增
+
+- **无浏览器/JS 测试**
+  - 影响：前端插件、Tom Select、模态框等只能人工验证
+  - 对应目标：可选
 
 ### 1.4 与目标基线的差距
 
@@ -217,7 +303,7 @@ PY
 
 更新本文时，同步修改 1.1、1.2 的数字和顶部“数据快照”日期。
 
-**统计口径：**
+**统计口径**：
 
 - 文件：`tests/**/test_*.py`
 - 用例：行首 `def test_`（含 `async def test_`）
@@ -242,23 +328,52 @@ PY
 
 建议比例（按数量，不按运行时间）：
 
-| 层级 | 建议占比 | 运行时间 | 依赖 |
-| --- | ---: | --- | --- |
-| Unit | ~55% | < 5s | 无 Flask 或最小 app |
-| Integration | ~30% | < 60s | Flask app + 内存 SQLite |
-| HTTP E2E | ~10% | < 60s | Flask test client + 邮件捕获 |
-| Browser E2E | ~3% | 分钟级 | 浏览器 + 运行中的服务 |
-| Performance | ~2% | 分钟级 | 大数据集 + benchmark |
+- **Unit**
+  - 建议占比：~55%
+  - 运行时间：< 5s
+  - 依赖：无 Flask 或最小 app
+
+- **Integration**
+  - 建议占比：~30%
+  - 运行时间：< 60s
+  - 依赖：Flask app + 内存 SQLite
+
+- **HTTP E2E**
+  - 建议占比：~10%
+  - 运行时间：< 60s
+  - 依赖：Flask test client + 邮件捕获
+
+- **Browser E2E**
+  - 建议占比：~3%
+  - 运行时间：分钟级
+  - 依赖：浏览器 + 运行中的服务
+
+- **Performance**
+  - 建议占比：~2%
+  - 运行时间：分钟级
+  - 依赖：大数据集 + benchmark
 
 ### 2.2 各层职责
 
-| 层级 | 测什么 | 不测什么 |
-| --- | --- | --- |
-| Unit | 纯函数、Query 构造、格式化器、插件排序、Registry 状态机、密钥/哈希/序列化 | 路由、模板、数据库提交 |
-| Integration | 视图 + 表单 + DB + 扩展协作；HTTP 状态码与页面关键内容 | 真实浏览器、外部 SMTP、跨进程 |
-| HTTP E2E | 完整用户旅程：注册→验证→登录→TFA→资料→登出；Admin CRUD | 像素级 UI、JS 交互 |
-| Browser E2E | JS 插件、Tom Select、模态框、日期选择器、响应式布局 | 业务规则（已由下层覆盖） |
-| Performance | 查询次数、查询耗时、渲染耗时、内存增长 | 正确性（由功能测试覆盖） |
+- **Unit**
+  - 测什么：纯函数、Query 构造、格式化器、插件排序、Registry 状态机、密钥/哈希/序列化
+  - 不测什么：路由、模板、数据库提交
+
+- **Integration**
+  - 测什么：视图 + 表单 + DB + 扩展协作；HTTP 状态码与页面关键内容
+  - 不测什么：真实浏览器、外部 SMTP、跨进程
+
+- **HTTP E2E**
+  - 测什么：完整用户旅程：注册→验证→登录→TFA→资料→登出；Admin CRUD
+  - 不测什么：像素级 UI、JS 交互
+
+- **Browser E2E**
+  - 测什么：JS 插件、Tom Select、模态框、日期选择器、响应式布局
+  - 不测什么：业务规则（已由下层覆盖）
+
+- **Performance**
+  - 测什么：查询次数、查询耗时、渲染耗时、内存增长
+  - 不测什么：正确性（由功能测试覆盖）
 
 ### 2.3 测试原则
 
@@ -280,12 +395,25 @@ PY
 
 当前测试默认串行执行；原模块级 `mail_data` 已由 function-scope `mail_outbox` fixture 取代。目标状态：
 
-| 能力 | 工具 | 是否已有 | 建议 |
-| --- | --- | --- | --- |
-| 并行执行 | `pytest-xdist` | 否 | 可选；模块级可变状态已消除 |
-| 随机顺序 | `pytest-randomly` | 否 | 可选；用于暴露顺序依赖 |
-| 超时保护 | `pytest-timeout` | 否 | 可选；防止挂起 |
-| 失败重试 | `pytest-rerunfailures` | 否 | **不推荐**作为常规手段 |
+- **并行执行**
+  - 工具：`pytest-xdist`
+  - 是否已有：否
+  - 建议：可选；模块级可变状态已消除
+
+- **随机顺序**
+  - 工具：`pytest-randomly`
+  - 是否已有：否
+  - 建议：可选；用于暴露顺序依赖
+
+- **超时保护**
+  - 工具：`pytest-timeout`
+  - 是否已有：否
+  - 建议：可选；防止挂起
+
+- **失败重试**
+  - 工具：`pytest-rerunfailures`
+  - 是否已有：否
+  - 建议：**不推荐**作为常规手段
 
 规则：
 
@@ -435,33 +563,52 @@ python -m pytest -q tests/integration/admin
 
 ### 3.4 文件命名与放置规则
 
-| 规则 | 说明 |
-| --- | --- |
-| 文件名 | `test_<主题>.py`；一个文件聚焦一个模块或一个流程 |
-| 测试函数 | `test_<条件>_<行为>_<期望>` |
-| 类 | 只在需要共享 fixture/参数化时使用 `TestXxx`，不要用它隐藏测试 |
-| 放置 | 纯逻辑放 `unit/`；涉及 Flask app/DB/路由放 `integration/`；跨模块旅程放 `e2e/`；基准放 `performance/` |
-| 测试模型 | 放对应目录的 `models/` 或 `tests/fixtures/models.py`，不要在生产模块中定义 |
-| 静态数据 | 上传/导出素材放 `tests/integration/data/`；运行时产物放 `tests/tmp/` 或 `tmp_path` |
-| 翻译 | i18n 测试用 `tests/translations/`，不要复用生产翻译目录 |
+- **文件名**：`test_<主题>.py`；一个文件聚焦一个模块或一个流程
+- **测试函数**：`test_<条件>_<行为>_<期望>`
+- **类**：只在需要共享 fixture/参数化时使用 `TestXxx`，不要用它隐藏测试
+- **放置**：纯逻辑放 `unit/`；涉及 Flask app/DB/路由放 `integration/`；跨模块旅程放 `e2e/`；基准放 `performance/`
+- **测试模型**：放对应目录的 `models/` 或 `tests/fixtures/models.py`，不要在生产模块中定义
+- **静态数据**：上传/导出素材放 `tests/integration/data/`；运行时产物放 `tests/tmp/` 或 `tmp_path`
+- **翻译**：i18n 测试用 `tests/translations/`，不要复用生产翻译目录
 
 ### 3.5 数据库与运行环境矩阵
 
 当前所有测试使用内存 SQLite（`sqlite://`）。这对速度有利，但不能覆盖生产数据库差异：
 
-| 维度 | SQLite（当前） | PostgreSQL | MySQL/MariaDB |
-| --- | --- | --- | --- |
-| 大小写敏感 | 默认不敏感 | 敏感 | 取决于 collation |
-| `LIKE` 行为 | 默认不区分大小写 | 区分大小写 | 取决于 collation |
-| 外键约束 | 默认关闭，需 `PRAGMA foreign_keys=ON` | 默认开启 | 默认开启 |
-| 并发/锁 | 单写者 | MVCC | MVCC/表锁 |
-| `count` + JOIN | 同样会重复计数 | 同 | 同 |
-| 日期/时区 | 文本存储 | 原生类型 | 原生类型 |
+- **大小写敏感**
+  - SQLite（当前）：默认不敏感
+  - PostgreSQL：敏感
+  - MySQL/MariaDB：取决于 collation
+
+- `LIKE` 行为
+  - SQLite（当前）：默认不区分大小写
+  - PostgreSQL：区分大小写
+  - MySQL/MariaDB：取决于 collation
+
+- **外键约束**
+  - SQLite（当前）：默认关闭，需 `PRAGMA foreign_keys=ON`
+  - PostgreSQL：默认开启
+  - MySQL/MariaDB：默认开启
+
+- **并发/锁**
+  - SQLite（当前）：单写者
+  - PostgreSQL：MVCC
+  - MySQL/MariaDB：MVCC/表锁
+
+- `count` + JOIN
+  - SQLite（当前）：同样会重复计数
+  - PostgreSQL：同
+  - MySQL/MariaDB：同
+
+- **日期/时区**
+  - SQLite（当前）：文本存储
+  - PostgreSQL：原生类型
+  - MySQL/MariaDB：原生类型
 
 建议：
 
 1. **日常开发**：继续用 SQLite，保持测试快速。
-2. **合并前/夜间**：至少用 PostgreSQL 跑一遍 `integration/`，重点覆盖 C2（一对多计数）、外键、大小写搜索。
+2. **合并前/夜间**：至少用 PostgreSQL 跑一遍 `integration/`，重点覆盖 CR-002（一对多计数）、外键、大小写搜索。
 3. **SQLite 外键测试**：在 fixture 中执行 `PRAGMA foreign_keys=ON`，否则级联/约束测试会“假通过”。
 4. **数据库差异**：不要把“SQLite 下通过”当作“生产等价”；涉及 `LIKE`、排序、`NULL` 排序的断言要显式。
 
@@ -501,24 +648,85 @@ def app():
 
 ### 4.2 建议新增的 fixtures
 
-| Fixture | 作用域 | 状态 | 作用 |
-| --- | --- | --- | --- |
-| `app` | function | 现有 | 每个测试独立 app |
-| `client` | function | 现有 | `app.test_client()` |
-| `admin` | function | 现有 | `integration/admin/conftest.py`，返回 Admin 实例 |
-| `login_as_admin` | function | 现有 | 可调用 fixture，在 `db.reset_all()` 后创建并登录 admin |
-| `sqla_view_factory` | function | 现有 | 构造 `MockSqlaView` |
-| `db_setup` | function | 待补 | 在 app context 内 `db.reset_all()`，结束时 `db.session.remove()` |
-| `user_factory` | function | 待补 | 创建用户，支持 `username/password/email/is_active/roles` |
-| `admin_user` | function | 待补 | 创建激活的 admin 角色用户 |
-| `authenticated_client` | function | 待补 | 已登录的 `client`（session 注入或走登录路由） |
-| `admin_client` | function | 待补 | 已登录且具备 admin 角色的 client |
-| `mail_outbox` | function | 现有 | 每个测试独立的邮件列表；`setup` 用 `EmailSender(mail_outbox)` 注册 sender |
-| `csrf_client` | function | 待补 | 开启 CSRF 的 client，并提供取 token 的辅助 |
-| `query_counter` | function | 待补 | 统计当前 app 引擎的 SQL 次数，用于 N+1 检测 |
-| `seeded_db` | function | 待补 | 预置 100/1000/10000 条数据，供性能测试 |
-| `app_factory` | function | 待补 | 创建独立 app，用于多 app/重绑定测试 |
-| `tmp_upload_dir` | function | 待补 | 基于 `tmp_path` 的上传目录，测试后自动清理 |
+- `app`
+  - 作用域：function
+  - 状态：现有
+  - 作用：每个测试独立 app
+
+- `client`
+  - 作用域：function
+  - 状态：现有
+  - 作用：`app.test_client()`
+
+- `admin`
+  - 作用域：function
+  - 状态：现有
+  - 作用：`integration/admin/conftest.py`，返回 Admin 实例
+
+- `login_as_admin`
+  - 作用域：function
+  - 状态：现有
+  - 作用：可调用 fixture，在 `db.reset_all()` 后创建并登录 admin
+
+- `sqla_view_factory`
+  - 作用域：function
+  - 状态：现有
+  - 作用：构造 `MockSqlaView`
+
+- `db_setup`
+  - 作用域：function
+  - 状态：待补
+  - 作用：在 app context 内 `db.reset_all()`，结束时 `db.session.remove()`
+
+- `user_factory`
+  - 作用域：function
+  - 状态：待补
+  - 作用：创建用户，支持 `username/password/email/is_active/roles`
+
+- `admin_user`
+  - 作用域：function
+  - 状态：待补
+  - 作用：创建激活的 admin 角色用户
+
+- `authenticated_client`
+  - 作用域：function
+  - 状态：待补
+  - 作用：已登录的 `client`（session 注入或走登录路由）
+
+- `admin_client`
+  - 作用域：function
+  - 状态：待补
+  - 作用：已登录且具备 admin 角色的 client
+
+- `mail_outbox`
+  - 作用域：function
+  - 状态：现有
+  - 作用：每个测试独立的邮件列表；`setup` 用 `EmailSender(mail_outbox)` 注册 sender
+
+- `csrf_client`
+  - 作用域：function
+  - 状态：待补
+  - 作用：开启 CSRF 的 client，并提供取 token 的辅助
+
+- `query_counter`
+  - 作用域：function
+  - 状态：待补
+  - 作用：统计当前 app 引擎的 SQL 次数，用于 N+1 检测
+
+- `seeded_db`
+  - 作用域：function
+  - 状态：待补
+  - 作用：预置 100/1000/10000 条数据，供性能测试
+
+- `app_factory`
+  - 作用域：function
+  - 状态：待补
+  - 作用：创建独立 app，用于多 app/重绑定测试
+
+- `tmp_upload_dir`
+  - 作用域：function
+  - 状态：待补
+  - 作用：基于 `tmp_path` 的上传目录，测试后自动清理
 
 > “待补”表示本文给出设计，但仓库尚未实现。落地顺序见第 12 节 Phase 0。
 
@@ -531,7 +739,6 @@ def app():
 def mail_outbox():
     """Per-test mailbox for messages captured by EmailSender."""
     return []
-
 
 class EmailSender(Sender):
     def __init__(self, outbox):
@@ -570,7 +777,7 @@ def test_signup_sends_verification(app, client, mail_outbox):
 
 两种方式：
 
-**方式 A：直接写 session（快，适合大多数测试）**
+**方式 A**：直接写 session（快，适合大多数测试）
 
 ```python
 @pytest.fixture
@@ -583,7 +790,7 @@ def authenticated_client(app, client, user_factory):
     return client
 ```
 
-**方式 B：走真实登录路由（慢，适合 E2E）**
+**方式 B**：走真实登录路由（慢，适合 E2E）
 
 ```python
 def login(client, username, password):
@@ -601,12 +808,21 @@ def login(client, username, password):
 
 ### 4.5 Fixture 作用域规则
 
-| 作用域 | 适用 | 风险 |
-| --- | --- | --- |
-| `function` | 绝大多数测试 | 安全，推荐默认 |
-| `module` | 只读、不可变数据 | 状态泄漏 |
-| `session` | 极少数昂贵资源（浏览器驱动） | 必须显式清理 |
-| `class` | 同类测试共享 | 谨慎 |
+- `function`
+  - 适用：绝大多数测试
+  - 风险：安全，推荐默认
+
+- `module`
+  - 适用：只读、不可变数据
+  - 风险：状态泄漏
+
+- `session`
+  - 适用：极少数昂贵资源（浏览器驱动）
+  - 风险：必须显式清理
+
+- `class`
+  - 适用：同类测试共享
+  - 风险：谨慎
 
 **禁止**：把可变数据库状态、用户、邮件 outbox 放在 `module`/`session` 作用域。
 
@@ -620,7 +836,6 @@ def tmp_upload_dir(tmp_path):
     upload_dir = tmp_path / "uploads"
     upload_dir.mkdir()
     return upload_dir
-
 
 def test_file_upload(app, tmp_upload_dir):
     field = FileField(save_path=str(tmp_upload_dir))
@@ -701,11 +916,9 @@ from sqlalchemy import select
 from flask_exts.datastore.sqla import db
 from flask_exts.proxies import current_userstore
 
-
 def unique(prefix="user"):
     """Return a process-safe unique name, e.g. ``user-3f9a1c2e``."""
     return f"{prefix}-{uuid4().hex[:8]}"
-
 
 def _get_or_create_role(name):
     role = db.session.execute(
@@ -714,7 +927,6 @@ def _get_or_create_role(name):
     if role is None:
         role = current_userstore.create_role(name)
     return role
-
 
 def make_user(*, username=None, password="password", email=None, active=True, roles=()):
     username = username or unique("user")
@@ -727,11 +939,9 @@ def make_user(*, username=None, password="password", email=None, active=True, ro
         current_userstore.user_add_role(user, _get_or_create_role(role_name))
     return user
 
-
 def make_admin(**kwargs):
     kwargs.setdefault("username", unique("admin"))
     return make_user(roles=("admin",), **kwargs)
-
 
 def make_records(model, count, **defaults):
     """Bulk-create ``count`` rows with a stable name prefix."""
@@ -742,7 +952,6 @@ def make_records(model, count, **defaults):
     db.session.add_all(objs)
     db.session.commit()
     return objs
-
 
 def make_admin_record(**kwargs):
     from tests.integration.admin.sqla.models.admin_records import AdminTestModel
@@ -762,7 +971,6 @@ def make_admin_record(**kwargs):
 ```python
 import factory
 from flask_exts.userstore.sqla.models import User
-
 
 class UserFactory(factory.Factory):
     class Meta:
@@ -803,22 +1011,91 @@ class UserFactory(factory.Factory):
 
 图例：✅ 已有较好覆盖；⏳ 部分覆盖/需补强；❌ 基本没有。
 
-| 模块 | Unit | Integration | HTTP E2E | Performance | 主要缺口 |
-| --- | :---: | :---: | :---: | :---: | --- |
-| Extension 系统 | ✅ | ⏳ | ❌ | ❌ | 晚注册待补；shutdown 异常隔离与现有测试行为冲突（C11）；E2E 不需要 |
-| Datastore / Query | ✅ | ⏳ | ❌ | ⏳ | 计数正确性、N+1、复杂过滤 |
-| Admin 基础 | ✅ | ✅ | ⏳ | ❌ | 权限矩阵、导出类型、URL 特殊字符 |
-| Admin Inline | ⏳ | ✅ | ⏳ | ❌ | Inline + AJAX 外键、复杂关系 |
-| Forms | ✅ | ✅ | ⏳ | ❌ | CSRF 过期/篡改、文件边界、Recaptcha |
-| Security | ✅ | ✅ | ⏳ | ❌ | 令牌过期、加密篡改、TFA 恢复码 |
-| UserStore | ❌ | ⏳ | ⏳ | ❌ | `get_users`、`remove_user`、profile |
-| UserCenter | ⏳ | ✅ | ⏳ | ❌ | 完整旅程、并发/重复提交、错误页 |
-| Emailer | ✅ | ⏳ | ⏳ | ❌ | SMTP 错误、默认发送器、未知类型 |
-| Frontend | ✅ | ⏳ | ❌ | ❌ | 插件资源顺序、模板集成 |
-| Commands | ❌ | ❌ | ❌ | ❌ | 建表、建用户、错误处理 |
-| Babel / i18n | ✅ | ⏳ | ⏳ | ❌ | 语言切换、时区、复数 |
+- **Extension 系统**
+  - Unit：✅
+  - Integration：⏳
+  - HTTP E2E：❌
+  - Performance：❌
+  - 主要缺口：晚注册待补；shutdown 异常隔离与现有测试行为冲突（CR-011）；E2E 不需要
 
-**关键路径（必须 100% 覆盖）：**
+- **Datastore / Query**
+  - Unit：✅
+  - Integration：⏳
+  - HTTP E2E：❌
+  - Performance：⏳
+  - 主要缺口：计数正确性、N+1、复杂过滤
+
+- **Admin 基础**
+  - Unit：✅
+  - Integration：✅
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：权限矩阵、导出类型、URL 特殊字符
+
+- **Admin Inline**
+  - Unit：⏳
+  - Integration：✅
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：Inline + AJAX 外键、复杂关系
+
+- **Forms**
+  - Unit：✅
+  - Integration：✅
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：CSRF 过期/篡改、文件边界、Recaptcha
+
+- **Security**
+  - Unit：✅
+  - Integration：✅
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：令牌过期、加密篡改、TFA 恢复码
+
+- **UserStore**
+  - Unit：❌
+  - Integration：⏳
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：`get_users`、`remove_user`、profile
+
+- **UserCenter**
+  - Unit：⏳
+  - Integration：✅
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：完整旅程、并发/重复提交、错误页
+
+- **Emailer**
+  - Unit：✅
+  - Integration：⏳
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：SMTP 错误、默认发送器、未知类型
+
+- **Frontend**
+  - Unit：✅
+  - Integration：⏳
+  - HTTP E2E：❌
+  - Performance：❌
+  - 主要缺口：插件资源顺序、模板集成
+
+- **Commands**
+  - Unit：❌
+  - Integration：❌
+  - HTTP E2E：❌
+  - Performance：❌
+  - 主要缺口：建表、建用户、错误处理
+
+- **Babel / i18n**
+  - Unit：✅
+  - Integration：⏳
+  - HTTP E2E：⏳
+  - Performance：❌
+  - 主要缺口：语言切换、时区、复数
+
+**关键路径**（必须 100% 覆盖）：
 
 1. 扩展注册 → 依赖排序 → `init_app` → `post_init` → `shutdown`
 2. 登录 → TFA 待验证 → TFA 验证 → 登录成功
@@ -831,27 +1108,23 @@ class UserFactory(factory.Factory):
 9. 权限：匿名/普通用户/admin/未激活
 10. 开放重定向防护
 
-<a id="62-需求追溯矩阵"></a>
-
 ### 6.2 需求追溯与用例导航
 
-`requirements.md` 定义 `REQ-*` 契约，本文维护测试设计。具体 `REQ → TC → 测试入口` 唯一维护在 [`requirements.md`](./requirements.md) 各契约的“验收”字段；`TC` 的编号规则和历史别名见第 6.3 节。下表只按能力导航，不推断契约关联、层级或覆盖情况；用例层级、状态及断言以各用例条目为准。
+`requirements.md` 定义 `REQ-*` 契约，本文维护测试设计。具体 `REQ → TC → 测试入口` 唯一维护在 [`requirements.md`](./requirements.md) 各契约的“验收”字段；`TC` 的编号规则和历史别名见第 6.3 节。下文只按能力导航，不推断契约关联、层级或覆盖情况；用例层级、状态及断言以各用例条目为准。
 
-| 能力 | 测试用例入口 |
-| --- | --- |
-| 扩展生命周期、依赖、关闭 | [扩展测试](#71-extension-系统) |
-| 数据库绑定、会话、Query、事务 | [数据测试](#72-datastore--query)、[事务与约束](#711-数据库事务与约束) |
-| Admin 列表、CRUD、Inline、导出、权限 | [Admin 测试](#73-admin) |
-| 表单、CSRF、上传 | [表单测试](#74-forms) |
-| 授权、令牌、加密、TFA | [安全测试](#75-security)、[用户中心测试](#77-usercenter) |
-| 用户存储 | [UserStore 测试](#76-userstore) |
-| 注册、邮箱、密码 | [用户中心测试](#77-usercenter) |
-| 邮件与信号 | [邮件测试](#78-emailer)、[信号测试](#712-错误处理与信号契约) |
-| 前端插件与模板 | [前端测试](#79-frontend) |
-| CLI | [命令测试](#710-commands) |
-| i18n / 时区 | [国际化测试](#713-i18n时区与复数) |
-| 错误处理 | [错误处理测试](#712-错误处理与信号契约) |
-| 端到端流程 | [HTTP E2E 流程](#82-http-e2e-流程清单) |
+- **扩展生命周期、依赖、关闭**：[扩展测试](#71-extension-系统)
+- **数据库绑定、会话、Query、事务**：[数据测试](#72-datastore--query)、[事务与约束](#711-数据库事务与约束)
+- **Admin 列表、CRUD、Inline、导出、权限**：[Admin 测试](#73-admin)
+- **表单、CSRF、上传**：[表单测试](#74-forms)
+- **授权、令牌、加密、TFA**：[安全测试](#75-security)、[用户中心测试](#77-usercenter)
+- **用户存储**：[UserStore 测试](#76-userstore)
+- **注册、邮箱、密码**：[用户中心测试](#77-usercenter)
+- **邮件与信号**：[邮件测试](#78-emailer)、[信号测试](#712-错误处理与信号契约)
+- **前端插件与模板**：[前端测试](#79-frontend)
+- **CLI**：[命令测试](#710-commands)
+- **i18n / 时区**：[国际化测试](#713-i18n时区与复数)
+- **错误处理**：[错误处理测试](#712-错误处理与信号契约)
+- **端到端流程**：[HTTP E2E 流程](#82-http-e2e-流程清单)
 
 #### 追溯证据检查
 
@@ -875,154 +1148,675 @@ class UserFactory(factory.Factory):
 
 **测试层级不放入编号**：Unit、Integration、HTTP E2E、浏览器 E2E 和 Performance 在用例的“类型”字段或所属测试章节中记录；需要区分 HTTP 与浏览器时写明具体类型。同一用例可关联不同层级的多个测试入口，分别记录结果；执行方式或层级调整不因此改号。仓库支持时可用测试标记区分，本文的 marker 规划不代表仓库已注册。
 
-**历史用例迁移（2026-11-09）**：本目录已有用例按下表一对一迁移，范围内从起始编号按顺序对应。旧 `TST-*` 编号保留为历史别名；更早的不带 `TST-` 的编号仍可先补上 `TST-` 再查下表。仅适用于下表所列范围，不能据此前缀或相同序号猜测其他映射。
+**历史用例迁移（2026-11-09）**：本目录已有用例按下文一对一迁移，范围内从起始编号按顺序对应。旧 `TST-*` 编号保留为历史别名；更早的不带 `TST-` 的编号仍可先补上 `TST-` 再查下文。仅适用于下文所列范围，不能据此前缀或相同序号猜测其他映射。
 
-| 历史测试编号 | 当前测试编号 |
-| --- | --- |
-| `TST-E-01`～`TST-E-20` | `TC-EXT-001`～`TC-EXT-020` |
-| `TST-D-01`～`TST-D-18` | `TC-DATA-001`～`TC-DATA-018` |
-| `TST-A-01`～`TST-A-33` | `TC-ADMIN-001`～`TC-ADMIN-033` |
-| `TST-F-01`～`TST-F-17` | `TC-FORM-001`～`TC-FORM-017` |
-| `TST-S-01`～`TST-S-21` | `TC-SEC-001`～`TC-SEC-021` |
-| `TST-U-01`～`TST-U-15` | `TC-USER-001`～`TC-USER-015` |
-| `TST-UC-01`～`TST-UC-22` | `TC-AUTH-001`～`TC-AUTH-022` |
-| `TST-M-01`～`TST-M-09` | `TC-EMAIL-001`～`TC-EMAIL-009` |
-| `TST-FE-01`～`TST-FE-10` | `TC-FRONTEND-001`～`TC-FRONTEND-010` |
-| `TST-CLI-01`～`TST-CLI-06` | `TC-CLI-001`～`TC-CLI-006` |
-| `TST-TX-01`～`TST-TX-09` | `TC-DATA-019`～`TC-DATA-027` |
-| `TST-ERR-01`～`TST-ERR-08` | `TC-ERROR-001`～`TC-ERROR-008` |
-| `TST-SIG-01`～`TST-SIG-06` | `TC-SIGNAL-001`～`TC-SIGNAL-006` |
-| `TST-I18N-01`～`TST-I18N-06` | `TC-I18N-001`～`TC-I18N-006` |
-| `TST-E2E-AUTH-01`～`TST-E2E-AUTH-06` | `TC-AUTH-023`～`TC-AUTH-028` |
-| `TST-E2E-ADMIN-01`～`TST-E2E-ADMIN-06` | `TC-ADMIN-034`～`TC-ADMIN-039` |
-| `TST-E2E-ERR-01` | `TC-ERROR-009` |
-| `TST-E2E-I18N-01` | `TC-I18N-007` |
+- `TST-E-01`～`TST-E-20`：`TC-EXT-001`～`TC-EXT-020`
+- `TST-D-01`～`TST-D-18`：`TC-DATA-001`～`TC-DATA-018`
+- `TST-A-01`～`TST-A-33`：`TC-ADMIN-001`～`TC-ADMIN-033`
+- `TST-F-01`～`TST-F-17`：`TC-FORM-001`～`TC-FORM-017`
+- `TST-S-01`～`TST-S-21`：`TC-SEC-001`～`TC-SEC-021`
+- `TST-U-01`～`TST-U-15`：`TC-USER-001`～`TC-USER-015`
+- `TST-UC-01`～`TST-UC-22`：`TC-AUTH-001`～`TC-AUTH-022`
+- `TST-M-01`～`TST-M-09`：`TC-EMAIL-001`～`TC-EMAIL-009`
+- `TST-FE-01`～`TST-FE-10`：`TC-FRONTEND-001`～`TC-FRONTEND-010`
+- `TST-CLI-01`～`TST-CLI-06`：`TC-CLI-001`～`TC-CLI-006`
+- `TST-TX-01`～`TST-TX-09`：`TC-DATA-019`～`TC-DATA-027`
+- `TST-ERR-01`～`TST-ERR-08`：`TC-ERROR-001`～`TC-ERROR-008`
+- `TST-SIG-01`～`TST-SIG-06`：`TC-SIGNAL-001`～`TC-SIGNAL-006`
+- `TST-I18N-01`～`TST-I18N-06`：`TC-I18N-001`～`TC-I18N-006`
+- `TST-E2E-AUTH-01`～`TST-E2E-AUTH-06`：`TC-AUTH-023`～`TC-AUTH-028`
+- `TST-E2E-ADMIN-01`～`TST-E2E-ADMIN-06`：`TC-ADMIN-034`～`TC-ADMIN-039`
+- `TST-E2E-ERR-01`：`TC-ERROR-009`
+- `TST-E2E-I18N-01`：`TC-I18N-007`
 
-迁移仅改变本文档集的编号和引用，不改变用例内容、状态或执行结果。此前带能力段的 `TST-*` 和 `TEST-*` 文档示例未分配；如仓库或外部记录已使用，应先核实实际指向，保留历史引用，不推定与某条 `TC-*` 等价。后续变更或拆分编号时先核实关联并记录映射，按授权同步相关文档、测试代码和工具；仓库不可见时记录未核验。
+迁移仅改变本文档集的编号和引用，不改变用例内容、状态或执行结果。此前带能力段的 `TST-*` 和 `TEST-*` 文档示例未分配；如仓库或外部记录已使用，应先核实实际指向，保留历史引用，不推定与某条 `TC-*` 等价。后续变更或拆分编号时先核实关联并记录映射，按授权同步受影响的文档、测试代码和工具；仓库不可见时记录未核验。
 
 ## 7. 详细测试用例设计
 
 > 说明：
+>
 > - **类型**：U=Unit，I=Integration，E=HTTP E2E，P=Performance。
 > - **优先级**：P0=必须，P1=应该，P2=可选。
 > - **状态**：现有=已有测试；待补=建议新增；待修=已有测试但断言不足。
 
 ### 7.1 Extension 系统
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-EXT-001 | 注册合法扩展 | U | P0 | 现有 | 返回实例，name 正确 |
-| TC-EXT-002 | 重复名称注册 | U | P0 | 现有 | 抛 `ExtensionError`，消息含名称 |
-| TC-EXT-003 | 非 Extension 类注册 | U | P0 | 现有 | 抛 `ExtensionError` |
-| TC-EXT-004 | 非法名称（空/非 ASCII/特殊字符） | U | P0 | 现有 | 抛 `ExtensionError` |
-| TC-EXT-005 | 依赖项先于依赖者初始化 | U | P0 | 现有 | 依赖项在记录顺序中先于依赖者 |
-| TC-EXT-006 | 无依赖扩展保持注册顺序 | U | P1 | 现有 | 顺序稳定 |
-| TC-EXT-007 | 深链依赖 A→B→C | U | P1 | 现有 | C→B→A |
-| TC-EXT-008 | 缺失依赖 | U | P0 | 现有 | 抛 `ExtensionNotFoundError` |
-| TC-EXT-009 | 循环依赖 | U | P0 | 现有 | 抛 `ExtensionDependencyError`，消息含环 |
-| TC-EXT-010 | 自依赖 | U | P1 | 现有 | 抛 `ExtensionDependencyError` |
-| TC-EXT-011 | `init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
-| TC-EXT-012 | `post_init` 前必须 `init` | U | P0 | 现有 | 抛 `ExtensionInitError` |
-| TC-EXT-013 | `post_init` 幂等 | U | P0 | 现有 | 第二次不重复调用 |
-| TC-EXT-014 | `post_init` 按依赖顺序 | U | P1 | 现有 | 顺序正确 |
-| TC-EXT-015 | `shutdown` 逆序 | U | P0 | 现有 | 与初始化相反 |
-| TC-EXT-016 | `shutdown` 单扩展异常隔离 | U | P1 | 现有 | 继续关闭其他扩展并产生 warning；`BaseException` 不被吞掉；`test_shutdown_exception_is_isolated` |
-| TC-EXT-017 | 内置扩展图可初始化 | I | P0 | 现有 | 所有内置扩展初始化成功 |
-| TC-EXT-018 | Admin 收集 Portal/UserCenter 视图 | I | P0 | 现有 | 视图注册到 admin |
-| TC-EXT-019 | 晚注册扩展 | U | P2 | 待补 | 文档化行为：不回溯扫描 |
-| TC-EXT-020 | `has_extension` 语义 | U | P2 | 待补 | 明确“已注册”还是“已初始化” |
+- `TC-EXT-001`
+  - 场景：注册合法扩展
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：返回实例，name 正确
+
+- `TC-EXT-002`
+  - 场景：重复名称注册
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `ExtensionError`，消息含名称
+
+- `TC-EXT-003`
+  - 场景：非 Extension 类注册
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `ExtensionError`
+
+- `TC-EXT-004`
+  - 场景：非法名称（空/非 ASCII/特殊字符）
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `ExtensionError`
+
+- `TC-EXT-005`
+  - 场景：依赖项先于依赖者初始化
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：依赖项在记录顺序中先于依赖者
+
+- `TC-EXT-006`
+  - 场景：无依赖扩展保持注册顺序
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：顺序稳定
+
+- `TC-EXT-007`
+  - 场景：深链依赖 A→B→C
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：C→B→A
+
+- `TC-EXT-008`
+  - 场景：缺失依赖
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `ExtensionNotFoundError`
+
+- `TC-EXT-009`
+  - 场景：循环依赖
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `ExtensionDependencyError`，消息含环
+
+- `TC-EXT-010`
+  - 场景：自依赖
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：抛 `ExtensionDependencyError`
+
+- `TC-EXT-011`
+  - 场景：`init` 幂等
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：第二次不重复调用
+
+- `TC-EXT-012`
+  - 场景：`post_init` 前必须 `init`
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `ExtensionInitError`
+
+- `TC-EXT-013`
+  - 场景：`post_init` 幂等
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：第二次不重复调用
+
+- `TC-EXT-014`
+  - 场景：`post_init` 按依赖顺序
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：顺序正确
+
+- `TC-EXT-015`
+  - 场景：`shutdown` 逆序
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：与初始化相反
+
+- `TC-EXT-016`
+  - 场景：`shutdown` 单扩展异常隔离
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：继续关闭其他扩展并产生 warning；`BaseException` 不被吞掉；`test_shutdown_exception_is_isolated`
+
+- `TC-EXT-017`
+  - 场景：内置扩展图可初始化
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：所有内置扩展初始化成功
+
+- `TC-EXT-018`
+  - 场景：Admin 收集 Portal/UserCenter 视图
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：视图注册到 admin
+
+- `TC-EXT-019`
+  - 场景：晚注册扩展
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：文档化行为：不回溯扫描
+
+- `TC-EXT-020`
+  - 场景：`has_extension` 语义
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：明确“已注册”还是“已初始化”
 
 ### 7.2 Datastore / Query
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-DATA-001 | 缺少 `SQLALCHEMY_DATABASE_URI` | U | P0 | 现有 | 抛 `RuntimeError` |
-| TC-DATA-002 | 扩展 key 与 Flask-SQLAlchemy 区分 | U | P0 | 现有 | 使用 `flask_exts_sqla` |
-| TC-DATA-003 | 内存 SQLite 共享连接 | U | P0 | 现有 | `StaticPool` + `check_same_thread=False` |
-| TC-DATA-004 | 未 dispose 重复绑定 | U | P0 | 现有 | 抛 `RuntimeError` |
-| TC-DATA-005 | dispose 后可重绑定 | U | P0 | 现有 | 新 app 可用 |
-| TC-DATA-006 | 无 app context dispose | U | P1 | 现有 | 不抛异常 |
-| TC-DATA-007 | scoped session 按 app context | U | P0 | 现有 | 同 context 同 session |
-| TC-DATA-008 | `reset_all` 删表重建 | U | P1 | 现有 | 表存在且为空 |
-| TC-DATA-009 | JOIN 路径复用 | U | P0 | 现有 | 相同路径返回同一 alias |
-| TC-DATA-010 | 前缀路径复用 | U | P1 | 现有 | 扩展路径复用前缀 |
-| TC-DATA-011 | 不同关系生成不同 alias | U | P0 | 现有 | 多路径不串 |
-| TC-DATA-012 | 搜索 `^`/`$`/`=` 语义 | U | P1 | 待补 | 前缀/后缀/精确 |
-| TC-DATA-013 | 过滤操作符 | U | P1 | 待补 | `==`/`!=`/`>`/`<`/`like`/`in`/`between`/`is_null` |
-| TC-DATA-014 | 一对多 JOIN 计数 | U | P0 | 待补 | `count` 等于根记录数，不重复 |
-| TC-DATA-015 | eager load 配置 | U | P2 | 现有（弱） | `joinedload`/`selectinload` 生效 |
-| TC-DATA-016 | 复合主键删除 | I | P1 | 现有 | 正确删除 |
-| TC-DATA-017 | 无效关系路径 | U | P1 | 待补 | 抛 `ValueError`/`AttributeError` |
-| TC-DATA-018 | 类型推断 | U | P1 | 现有 | 常见列类型正确 |
+- `TC-DATA-001`
+  - 场景：缺少 `SQLALCHEMY_DATABASE_URI`
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `RuntimeError`
+
+- `TC-DATA-002`
+  - 场景：扩展 key 与 Flask-SQLAlchemy 区分
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：使用 `flask_exts_sqla`
+
+- `TC-DATA-003`
+  - 场景：内存 SQLite 共享连接
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`StaticPool` + `check_same_thread=False`
+
+- `TC-DATA-004`
+  - 场景：未 dispose 重复绑定
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：抛 `RuntimeError`
+
+- `TC-DATA-005`
+  - 场景：dispose 后可重绑定
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：新 app 可用
+
+- `TC-DATA-006`
+  - 场景：无 app context dispose
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：不抛异常
+
+- `TC-DATA-007`
+  - 场景：scoped session 按 app context
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：同 context 同 session
+
+- `TC-DATA-008`
+  - 场景：`reset_all` 删表重建
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：表存在且为空
+
+- `TC-DATA-009`
+  - 场景：JOIN 路径复用
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：相同路径返回同一 alias
+
+- `TC-DATA-010`
+  - 场景：前缀路径复用
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：扩展路径复用前缀
+
+- `TC-DATA-011`
+  - 场景：不同关系生成不同 alias
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：多路径不串
+
+- `TC-DATA-012`
+  - 场景：搜索 `^`/`$`/`=` 语义
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：前缀/后缀/精确
+
+- `TC-DATA-013`
+  - 场景：过滤操作符
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：`==`/`!=`/`>`/`<`/`like`/`in`/`between`/`is_null`
+
+- `TC-DATA-014`
+  - 场景：一对多 JOIN 计数
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`count` 等于根记录数，不重复
+
+- `TC-DATA-015`
+  - 场景：eager load 配置
+  - 类型：U
+  - 优先级：P2
+  - 状态：现有（弱）
+  - 关键断言：`joinedload`/`selectinload` 生效
+
+- `TC-DATA-016`
+  - 场景：复合主键删除
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：正确删除
+
+- `TC-DATA-017`
+  - 场景：无效关系路径
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：抛 `ValueError`/`AttributeError`
+
+- `TC-DATA-018`
+  - 场景：类型推断
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：常见列类型正确
 
 ### 7.3 Admin
 
-> View/ModelView/SqlaModelView 的实现与配置见 [`spec.md` 第 10 章](./spec.md#10-view-与-admin-专题)。本节只定义 Admin 测试用例；C1/C2/C5/C6 的问题说明见 `spec.md` 第 10.16 节，C1/C2/C6 的相关用例为 TC-ADMIN-021/TC-ADMIN-031/TC-ADMIN-032，状态以用例表为准。
+> View/ModelView/SqlaModelView 的实现与配置见 [`spec.md` 第 10 章](./spec.md#10-view-与-admin-专题)。本节只定义 Admin 测试用例；CR-001/CR-002/CR-005/CR-006 的问题说明见 `spec.md` 第 10.16 节，CR-001/CR-002/CR-006 的相关用例为 TC-ADMIN-021/TC-ADMIN-031/TC-ADMIN-032，状态以用例表为准。
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-ADMIN-001 | 列表列渲染 | I | P0 | 现有 | 列名/值正确 |
-| TC-ADMIN-002 | 默认分页 | I | P0 | 现有 | 页大小、页数、记录数 |
-| TC-ADMIN-003 | 可配置页大小白名单 | I | P0 | 现有 | 非白名单回退默认 |
-| TC-ADMIN-004 | 无分页（page_size=0） | I | P1 | 现有 | 返回全部 |
-| TC-ADMIN-005 | 排序（升/降/关联） | I | P0 | 现有 | 顺序正确 |
-| TC-ADMIN-006 | 默认排序 | I | P1 | 现有 | 无参数时按默认 |
-| TC-ADMIN-007 | 搜索（普通/关联/无关联行） | I | P0 | 现有 | 命中/不命中 |
-| TC-ADMIN-008 | 搜索保留额外参数 | I | P1 | 现有 | 隐藏字段保留 |
-| TC-ADMIN-009 | 筛选操作符 | I | P0 | 现有 | 7 种文本操作、数值/日期/布尔 |
-| TC-ADMIN-010 | 关联列筛选 | I | P1 | 现有 | 关联表过滤正确 |
-| TC-ADMIN-011 | CRUD | I | P0 | 现有 | 创建/编辑/删除 + DB 状态 |
-| TC-ADMIN-012 | 详情页 | I | P1 | 现有 | 字段值正确 |
-| TC-ADMIN-013 | CSV 导出 | I | P1 | 现有 | 内容/表头 |
-| TC-ADMIN-014 | 导出最大行数 | I | P2 | 待补 | 超限行为 |
-| TC-ADMIN-015 | 其他导出类型 | I | P2 | 待补 | tablib 支持类型 |
-| TC-ADMIN-016 | 行内编辑 | I | P1 | 现有 | 列表页保存 |
-| TC-ADMIN-017 | 批量删除 | I | P0 | 现有 | 选中记录删除 |
-| TC-ADMIN-018 | Inline 创建/编辑/删除 | I | P0 | 现有 | 父子记录最终状态 |
-| TC-ADMIN-019 | Inline 一对多/多对多/一对一 | I | P1 | 现有 | 关系正确 |
-| TC-ADMIN-020 | Inline 多外键 | I | P1 | 现有 | 关系映射正确 |
-| TC-ADMIN-021 | Inline + AJAX 外键 | I | P0 | 待补 | 页面 200，能搜索/保存（对应 C1） |
-| TC-ADMIN-022 | AJAX 外键/多对多 | I | P1 | 现有 | 返回 JSON 正确 |
-| TC-ADMIN-023 | 复合主键 | I | P1 | 现有 | 列表/删除正确 |
-| TC-ADMIN-024 | 字符串主键 | I | P1 | 现有 | 列表/删除正确 |
-| TC-ADMIN-025 | 权限：匿名 | I | P0 | 待补/部分 | 默认 403（加 @login_required 时重定向） |
-| TC-ADMIN-026 | 权限：普通用户 | I | P0 | 待补/部分 | 403 |
-| TC-ADMIN-027 | 权限：admin | I | P0 | 现有 | 200 |
-| TC-ADMIN-028 | 权限：未激活账号 | I | P0 | 待补 | 拒绝账号功能 |
-| TC-ADMIN-029 | 动态翻译 | I | P1 | 现有 | 语言切换后文本变化 |
-| TC-ADMIN-030 | 表单额外字段/自定义基类 | I | P1 | 现有 | 字段存在/渲染 |
-| TC-ADMIN-031 | 一对多搜索计数 | I | P0 | 现有 | 分页总数与列表实际行数一致（含重复根行）；`test_related_search_count_matches_list_rows`（对应 C2） |
-| TC-ADMIN-032 | URL 特殊字符 | I | P1 | 现有 | 搜索词含 `&`/空格/非 ASCII 时 URL 编码正确并可回放；`test_get_list_url_encodes_special_characters`、`test_search_url_encodes_special_characters` |
-| TC-ADMIN-033 | 列表空结果/越界页 | I | P1 | 待补 | 200，空列表，页数合理 |
-| TC-ADMIN-040 | AJAX 更新受 can_edit 约束 | I | P0 | 现有 | `can_edit=False` 时 `/ajax/update/` 返回 403 且记录不变；`test_ajax_update_requires_can_edit`（对应 V-01/SEC-19） |
+- `TC-ADMIN-001`
+  - 场景：列表列渲染
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：列名/值正确
+
+- `TC-ADMIN-002`
+  - 场景：默认分页
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：页大小、页数、记录数
+
+- `TC-ADMIN-003`
+  - 场景：可配置页大小白名单
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：非白名单回退默认
+
+- `TC-ADMIN-004`
+  - 场景：无分页（page_size=0）
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：返回全部
+
+- `TC-ADMIN-005`
+  - 场景：排序（升/降/关联）
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：顺序正确
+
+- `TC-ADMIN-006`
+  - 场景：默认排序
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：无参数时按默认
+
+- `TC-ADMIN-007`
+  - 场景：搜索（普通/关联/无关联行）
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：命中/不命中
+
+- `TC-ADMIN-008`
+  - 场景：搜索保留额外参数
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：隐藏字段保留
+
+- `TC-ADMIN-009`
+  - 场景：筛选操作符
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：7 种文本操作、数值/日期/布尔
+
+- `TC-ADMIN-010`
+  - 场景：关联列筛选
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：关联表过滤正确
+
+- `TC-ADMIN-011`
+  - 场景：CRUD
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：创建/编辑/删除 + DB 状态
+
+- `TC-ADMIN-012`
+  - 场景：详情页
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：字段值正确
+
+- `TC-ADMIN-013`
+  - 场景：CSV 导出
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：内容/表头
+
+- `TC-ADMIN-014`
+  - 场景：导出最大行数
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：超限行为
+
+- `TC-ADMIN-015`
+  - 场景：其他导出类型
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：tablib 支持类型
+
+- `TC-ADMIN-016`
+  - 场景：行内编辑
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：列表页保存
+
+- `TC-ADMIN-017`
+  - 场景：批量删除
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：选中记录删除
+
+- `TC-ADMIN-018`
+  - 场景：Inline 创建/编辑/删除
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：父子记录最终状态
+
+- `TC-ADMIN-019`
+  - 场景：Inline 一对多/多对多/一对一
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：关系正确
+
+- `TC-ADMIN-020`
+  - 场景：Inline 多外键
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：关系映射正确
+
+- `TC-ADMIN-021`
+  - 场景：Inline + AJAX 外键
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：页面 200，能搜索/保存（对应 CR-001）
+
+- `TC-ADMIN-022`
+  - 场景：AJAX 外键/多对多
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：返回 JSON 正确
+
+- `TC-ADMIN-023`
+  - 场景：复合主键
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：列表/删除正确
+
+- `TC-ADMIN-024`
+  - 场景：字符串主键
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：列表/删除正确
+
+- `TC-ADMIN-025`
+  - 场景：权限：匿名
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补/部分
+  - 关键断言：默认 403（加 @login_required 时重定向）
+
+- `TC-ADMIN-026`
+  - 场景：权限：普通用户
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补/部分
+  - 关键断言：403
+
+- `TC-ADMIN-027`
+  - 场景：权限：admin
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：200
+
+- `TC-ADMIN-028`
+  - 场景：权限：未激活账号
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：拒绝账号功能
+
+- `TC-ADMIN-029`
+  - 场景：动态翻译
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：语言切换后文本变化
+
+- `TC-ADMIN-030`
+  - 场景：表单额外字段/自定义基类
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：字段存在/渲染
+
+- `TC-ADMIN-031`
+  - 场景：一对多搜索计数
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：分页总数与列表实际行数一致（含重复根行）；`test_related_search_count_matches_list_rows`（对应 CR-002）
+
+- `TC-ADMIN-032`
+  - 场景：URL 特殊字符
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：搜索词含 `&`/空格/非 ASCII 时 URL 编码正确并可回放；`test_get_list_url_encodes_special_characters`、`test_search_url_encodes_special_characters`
+
+- `TC-ADMIN-033`
+  - 场景：列表空结果/越界页
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：200，空列表，页数合理
+
+- `TC-ADMIN-040`
+  - 场景：AJAX 更新受 can_edit 约束
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`can_edit=False` 时 `/ajax/update/` 返回 403 且记录不变；`test_ajax_update_requires_can_edit`（对应 SEC-19）
 
 补充测试缺口（2026-11-07 快照，现状待核实）：
 
 - 自定义 `DataBackend` 缺少单元测试。
-- V-02 涉及的单行操作与批量操作渲染/执行缺少专门测试；`test_actions.py` 的历史记录以行内编辑和批量删除为主。
+- CR-012 涉及的单行操作与批量操作渲染/执行缺少专门测试；`test_actions.py` 的历史记录以行内编辑和批量删除为主。
 - 视图编辑开关 `can_edit=False` 的 AJAX 更新边界另见第 7.5 节 SEC-19；不能把普通行内编辑用例当成该边界已覆盖。
 
 ### 7.4 Forms
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-FORM-001 | JSON 合法/非法/空 | U | P0 | 现有 | 解析/错误 |
-| TC-FORM-002 | 日期/时间/日期时间字段 | U | P0 | 现有 | 解析/格式化 |
-| TC-FORM-003 | 文件字段无输入 | U | P0 | 现有 | 不报错/None |
-| TC-FORM-004 | 文件上传/多文件 | U | P0 | 现有 | 保存/读取 |
-| TC-FORM-005 | 图片上传 | U | P1 | 现有 | 类型/尺寸 |
-| TC-FORM-006 | 必填文件 | U | P1 | 现有 | 缺失报错 |
-| TC-FORM-007 | FieldList / FormField | U | P1 | 现有 | 子表单数据 |
-| TC-FORM-008 | CSRF 开启 | U | P0 | 现有 | token 存在/校验通过 |
-| TC-FORM-009 | CSRF 关闭 | U | P1 | 现有 | 不生成/不校验 |
-| TC-FORM-010 | CSRF 缺失/篡改/过期 | U | P0 | 待补 | 分别报错 |
-| TC-FORM-011 | CSRF 独立派生密钥 | U | P1 | 现有 | 不等于主密钥 |
-| TC-FORM-012 | `wrap_formdata` JSON/files | U | P1 | 待补 | 正确合并 |
-| TC-FORM-013 | Unique 校验器 | I | P1 | 现有（间接） | 重复值报错 |
-| TC-FORM-014 | Recaptcha（mock） | U | P2 | 待补 | 成功/失败 |
-| TC-FORM-015 | InlineModelField | U | P1 | 待补 | 子表单渲染/取值 |
-| TC-FORM-016 | Widget 渲染 | U | P2 | 待补 | Bootstrap 类/属性 |
-| TC-FORM-017 | i18n 标签/错误 | I | P2 | 部分 | 语言切换 |
+- `TC-FORM-001`
+  - 场景：JSON 合法/非法/空
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：解析/错误
+
+- `TC-FORM-002`
+  - 场景：日期/时间/日期时间字段
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：解析/格式化
+
+- `TC-FORM-003`
+  - 场景：文件字段无输入
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：不报错/None
+
+- `TC-FORM-004`
+  - 场景：文件上传/多文件
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：保存/读取
+
+- `TC-FORM-005`
+  - 场景：图片上传
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：类型/尺寸
+
+- `TC-FORM-006`
+  - 场景：必填文件
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：缺失报错
+
+- `TC-FORM-007`
+  - 场景：FieldList / FormField
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：子表单数据
+
+- `TC-FORM-008`
+  - 场景：CSRF 开启
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：token 存在/校验通过
+
+- `TC-FORM-009`
+  - 场景：CSRF 关闭
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：不生成/不校验
+
+- `TC-FORM-010`
+  - 场景：CSRF 缺失/篡改/过期
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：分别报错
+
+- `TC-FORM-011`
+  - 场景：CSRF 独立派生密钥
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：不等于主密钥
+
+- `TC-FORM-012`
+  - 场景：`wrap_formdata` JSON/files
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：正确合并
+
+- `TC-FORM-013`
+  - 场景：Unique 校验器
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有（间接）
+  - 关键断言：重复值报错
+
+- `TC-FORM-014`
+  - 场景：Recaptcha（mock）
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：成功/失败
+
+- `TC-FORM-015`
+  - 场景：InlineModelField
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：子表单渲染/取值
+
+- `TC-FORM-016`
+  - 场景：Widget 渲染
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：Bootstrap 类/属性
+
+- `TC-FORM-017`
+  - 场景：i18n 标签/错误
+  - 类型：I
+  - 优先级：P2
+  - 状态：部分
+  - 关键断言：语言切换
 
 `TC-FORM-010` 另需覆盖 HTTP 请求中缺失、篡改和过期 token 的边界；该层级待补，不能以基础表单测试代替。
 
@@ -1030,29 +1824,152 @@ class UserFactory(factory.Factory):
 
 > 安全威胁模型、控制措施、配置基线与风险清单见 [`security.md`](./security.md)。本节只定义测试用例；若实现行为与安全预期冲突，先在 `security.md` 登记风险，再补失败测试。
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-SEC-001 | 不同 purpose 派生不同 key | U | P0 | 现有 | key 不相等且不等于主密钥 |
-| TC-SEC-002 | 哈希正确/错误 | U | P0 | 现有 | verify True/False |
-| TC-SEC-003 | AES-GCM 加解密 | U | P0 | 待补 | 往返一致 |
-| TC-SEC-004 | 密文篡改 | U | P0 | 待补 | 解密失败 |
-| TC-SEC-005 | 序列化有效 | U | P0 | 现有 | 数据一致 |
-| TC-SEC-006 | 序列化过期 | U | P0 | 待补（现有注释） | `expired=True` |
-| TC-SEC-007 | 序列化篡改/错误 salt | U | P0 | 待补 | `invalid=True` |
-| TC-SEC-008 | 邮箱验证令牌 | I | P0 | 现有 | 验证成功/重复失败 |
-| TC-SEC-009 | 改邮箱令牌 | I | P0 | 现有（部分） | 旧邮箱/密码变化后失效；密码变更后令牌失效待补 |
-| TC-SEC-010 | 重置密码令牌 | I | P0 | 现有（间接） | 成功/过期/无效 |
-| TC-SEC-011 | 令牌用户不存在 | U | P1 | 待补 | `TokenUserNotFoundError` |
-| TC-SEC-012 | 授权：admin | U | P0 | 现有 | 允许 |
-| TC-SEC-013 | 授权：普通用户/无角色 | U | P0 | 现有 | 拒绝 |
-| TC-SEC-014 | `allow_access` 公开视图 | U | P0 | 现有 | 允许 |
-| TC-SEC-016 | TFA 生成/校验 | U | P0 | 现有（弱） | 正确码通过，错误码失败 |
-| TC-SEC-017 | TFA 恢复码 | I | P0 | 现有 | 只存哈希、一次性使用、明文值被拒绝；禁用/重绑后旧码失效；`test_plaintext_recovery_codes_are_rejected`（对应 SEC-13/SEC-16） |
-| TC-SEC-018 | TFA 待验证不能访问 | I | P0 | 现有 | 重定向/401 |
-| TC-SEC-019 | 密码变更使会话失效 | I | P0 | 现有 | 旧 session 失效 |
-| TC-SEC-020 | 安全重定向 | U | P0 | 现有 | 外部/畸形 URL 拒绝 |
-| TC-SEC-021 | JWT 编解码/过期/畸形 | I | P1 | 现有 | 正确/异常 |
-| TC-SEC-022 | 授权：inactive admin | U/I | P0 | 现有 | 访问 Admin 返回 403；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied` |
+- `TC-SEC-001`
+  - 场景：不同 purpose 派生不同 key
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：key 不相等且不等于主密钥
+
+- `TC-SEC-002`
+  - 场景：哈希正确/错误
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：verify True/False
+
+- `TC-SEC-003`
+  - 场景：AES-GCM 加解密
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：往返一致
+
+- `TC-SEC-004`
+  - 场景：密文篡改
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：解密失败
+
+- `TC-SEC-005`
+  - 场景：序列化有效
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：数据一致
+
+- `TC-SEC-006`
+  - 场景：序列化过期
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补（现有注释）
+  - 关键断言：`expired=True`
+
+- `TC-SEC-007`
+  - 场景：序列化篡改/错误 salt
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`invalid=True`
+
+- `TC-SEC-008`
+  - 场景：邮箱验证令牌
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：验证成功/重复失败
+
+- `TC-SEC-009`
+  - 场景：改邮箱令牌
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有（部分）
+  - 关键断言：旧邮箱/密码变化后失效；密码变更后令牌失效待补
+
+- `TC-SEC-010`
+  - 场景：重置密码令牌
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有（间接）
+  - 关键断言：成功/过期/无效
+
+- `TC-SEC-011`
+  - 场景：令牌用户不存在
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：`TokenUserNotFoundError`
+
+- `TC-SEC-012`
+  - 场景：授权：admin
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：允许
+
+- `TC-SEC-013`
+  - 场景：授权：普通用户/无角色
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：拒绝
+
+- `TC-SEC-014`
+  - 场景：`allow_access` 公开视图
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：允许
+
+- `TC-SEC-016`
+  - 场景：TFA 生成/校验
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有（弱）
+  - 关键断言：正确码通过，错误码失败
+
+- `TC-SEC-017`
+  - 场景：TFA 恢复码
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：只存哈希、一次性使用、明文值被拒绝；禁用/重绑后旧码失效；`test_plaintext_recovery_codes_are_rejected`（对应 SEC-13/SEC-16）
+
+- `TC-SEC-018`
+  - 场景：TFA 待验证不能访问
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：重定向/401
+
+- `TC-SEC-019`
+  - 场景：密码变更使会话失效
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：旧 session 失效
+
+- `TC-SEC-020`
+  - 场景：安全重定向
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：外部/畸形 URL 拒绝
+
+- `TC-SEC-021`
+  - 场景：JWT 编解码/过期/畸形
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：正确/异常
+
+- `TC-SEC-022`
+  - 场景：授权：inactive admin
+  - 类型：U/I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：访问 Admin 返回 403；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied`
 
 补充场景与测试建议（2026-11-07 快照，现状待核实；风险编号不是测试编号）：
 
@@ -1067,101 +1984,488 @@ class UserFactory(factory.Factory):
 - SEC-16：已覆盖——禁用 TFA 与重绑 authenticator 后 `recovery_codes` 被清空，旧码无法使用；重新生成后为全新哈希（`test_tfa`、`test_recovery`）。
 - SEC-17：已覆盖——断言 `SmtpSSL` 传给 `SMTP_SSL` 的 context 为 `CERT_REQUIRED` 且 `check_hostname=True`，并验证 TLS 错误包装为 `SmtpError`、消息头字段与返回值（`tests/unit/emailer/test_smtp.py`）。
 - SEC-18：模拟 logger，断言 warning 不含令牌和链接（已实现：`test_missing_sender_warning_redacts_payload`）。
-- SEC-19 / V-01：`can_edit=False` 且配置 `column_editable_list` 时，断言 `ajax_update` 被拒；两个编号指向同一问题。
+- SEC-19（旧别名 `V-01` 已废止）：`can_edit=False` 且配置 `column_editable_list` 时，断言 `ajax_update` 被拒；主记录见 `security.md` 第 11 节。
 
 上述风险场景尚未在此单独分配 TC 编号；不能凭风险编号或已有文件推断测试实现和执行结果。
 
 ### 7.6 UserStore
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-USER-001 | 创建用户 | I | P0 | 现有 | id/username/email |
-| TC-USER-002 | 重复用户名 | I | P0 | 现有 | `UserAlreadyExistsError` |
-| TC-USER-003 | 重复邮箱 | I | P0 | 现有 | `UserAlreadyExistsError` |
-| TC-USER-004 | 登录成功 | I | P0 | 现有 | 返回用户 |
-| TC-USER-005 | 登录失败（用户不存在/密码错） | I | P0 | 现有 | `InvalidCredentialsError` |
-| TC-USER-006 | dummy hash 抗枚举 | I | P1 | 待补 | 不存在用户也执行校验 |
-| TC-USER-007 | 按 id/identity/username 查询 | I | P0 | 现有 | 正确用户 |
-| TC-USER-008 | `identity_name` 切换 | I | P1 | 现有 | 按 username 查 |
-| TC-USER-009 | 角色创建/关联 | I | P0 | 现有 | 角色列表 |
-| TC-USER-010 | `user_set` 更新 | I | P1 | 待补 | 属性持久化 |
-| TC-USER-011 | `save_user` | I | P1 | 待补 | 更新持久化 |
-| TC-USER-012 | `get_users` 过滤 | I | P1 | 待补 | 按条件筛选（问题编号待核实） |
-| TC-USER-013 | `remove_user` | I | P1 | 待补 | 删除或明确抛错（问题编号待核实） |
-| TC-USER-014 | profile 一对一 | I | P1 | 待补 | 关联正确 |
-| TC-USER-015 | 密码哈希 | I | P0 | 现有 | 明文不落库 |
+- `TC-USER-001`
+  - 场景：创建用户
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：id/username/email
+
+- `TC-USER-002`
+  - 场景：重复用户名
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`UserAlreadyExistsError`
+
+- `TC-USER-003`
+  - 场景：重复邮箱
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`UserAlreadyExistsError`
+
+- `TC-USER-004`
+  - 场景：登录成功
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：返回用户
+
+- `TC-USER-005`
+  - 场景：登录失败（用户不存在/密码错）
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`InvalidCredentialsError`
+
+- `TC-USER-006`
+  - 场景：dummy hash 抗枚举
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：不存在用户也执行校验
+
+- `TC-USER-007`
+  - 场景：按 id/identity/username 查询
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：正确用户
+
+- `TC-USER-008`
+  - 场景：`identity_name` 切换
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：按 username 查
+
+- `TC-USER-009`
+  - 场景：角色创建/关联
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：角色列表
+
+- `TC-USER-010`
+  - 场景：`user_set` 更新
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：属性持久化
+
+- `TC-USER-011`
+  - 场景：`save_user`
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：更新持久化
+
+- `TC-USER-012`
+  - 场景：`get_users` 过滤
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：按条件筛选（问题编号待核实）
+
+- `TC-USER-013`
+  - 场景：`remove_user`
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：删除或明确抛错（问题编号待核实）
+
+- `TC-USER-014`
+  - 场景：profile 一对一
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：关联正确
+
+- `TC-USER-015`
+  - 场景：密码哈希
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：明文不落库
 
 ### 7.7 UserCenter
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-AUTH-001 | 注册成功 | I/E | P0 | 现有 | 用户创建 + 发验证邮件 |
-| TC-AUTH-002 | 重复邮箱/用户名 | I | P0 | 现有 | 错误提示 |
-| TC-AUTH-003 | 登录成功 | I/E | P0 | 现有 | 重定向/会话 |
-| TC-AUTH-004 | 登录失败 | I | P0 | 现有 | 统一错误，不枚举 |
-| TC-AUTH-005 | 禁用账号登录 | I | P0 | 现有 | `is_active=False` 正确密码也拒绝；未验证邮箱（`is_active=True`）可登录 |
-| TC-AUTH-006 | 登出 | I/E | P0 | 现有 | 会话清理 |
-| TC-AUTH-007 | 资料页需登录 | I | P0 | 现有 | 重定向登录 |
-| TC-AUTH-008 | 邮箱验证 | I/E | P0 | 现有 | `email_verified=True` |
-| TC-AUTH-009 | 重发验证邮件 | I | P1 | 现有 | 发送一次 |
-| TC-AUTH-010 | 改邮箱需密码 | I | P0 | 现有 | 密码错拒绝 |
-| TC-AUTH-011 | 改邮箱需确认 | I/E | P0 | 现有 | 点击链接后生效 |
-| TC-AUTH-012 | 改邮箱重复 | I | P1 | 现有 | 拒绝 |
-| TC-AUTH-013 | 改密码 | I/E | P0 | 现有 | 新密码可登录，旧密码失败 |
-| TC-AUTH-014 | 找回密码 | I/E | P0 | 现有 | 发邮件 |
-| TC-AUTH-015 | 重置密码 | I/E | P0 | 现有 | 新密码生效 |
-| TC-AUTH-016 | 恢复码 | I | P0 | 现有 | 登录成功/码失效 |
-| TC-AUTH-017 | TFA 启用/关闭 | I | P0 | 现有 | `tfa_enabled` 变化；关闭时清空 `totp_secret` 与 `recovery_codes` |
-| TC-AUTH-018 | TFA 登录完整流程 | E | P0 | 待补 | 密码→验证码→登录 |
-| TC-AUTH-019 | TFA 待验证不能绕过 | I | P0 | 现有 | 受保护页拒绝 |
-| TC-AUTH-020 | 禁用账号旧会话即时失效 | I | P0 | 现有 | 下一次请求 `user_loader` 返回 None、清除 `_user_id`；受保护页 302；重新启用后仍需登录 |
-| TC-AUTH-021 | 开放重定向 | I | P0 | 待补 | `next` 外部 URL 被拒 |
-| TC-AUTH-022 | 重复提交/并发注册 | I | P2 | 待补 | 唯一约束生效 |
-| TC-AUTH-029 | 禁用账号拒绝登录 | I | P0 | 现有 | 正确密码但不建立 `_user_id`；提示账号已禁用 |
-| TC-AUTH-030 | 禁用账号不能完成 pending TFA | I | P1 | 现有 | pending 被清理，重定向登录 |
-| TC-AUTH-031 | 连续密码失败触发锁定 | I | P0 | 现有 | 第 N 次失败后 `failed_login_count`/`locked_until` 写入；锁定期内正确密码也被拒；错误提示含剩余时间 |
-| TC-AUTH-032 | 第二因子失败计入同一锁定 | I | P0 | 现有 | TFA 连续错误后账号锁定，pending 被清理，GET 校验页重定向登录 |
-| TC-AUTH-033 | 锁定过期与成功登录清零 | U/I | P0 | 现有 | 过期后可登录；成功登录、成功重置密码把两列清零；退避按 2 的幂增长并被上限截断 |
+- `TC-AUTH-001`
+  - 场景：注册成功
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：用户创建 + 发验证邮件
+
+- `TC-AUTH-002`
+  - 场景：重复邮箱/用户名
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：错误提示
+
+- `TC-AUTH-003`
+  - 场景：登录成功
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：重定向/会话
+
+- `TC-AUTH-004`
+  - 场景：登录失败
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：统一错误，不枚举
+
+- `TC-AUTH-005`
+  - 场景：禁用账号登录
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`is_active=False` 正确密码也拒绝；未验证邮箱（`is_active=True`）可登录
+
+- `TC-AUTH-006`
+  - 场景：登出
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：会话清理
+
+- `TC-AUTH-007`
+  - 场景：资料页需登录
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：重定向登录
+
+- `TC-AUTH-008`
+  - 场景：邮箱验证
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`email_verified=True`
+
+- `TC-AUTH-009`
+  - 场景：重发验证邮件
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：发送一次
+
+- `TC-AUTH-010`
+  - 场景：改邮箱需密码
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：密码错拒绝
+
+- `TC-AUTH-011`
+  - 场景：改邮箱需确认
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：点击链接后生效
+
+- `TC-AUTH-012`
+  - 场景：改邮箱重复
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：拒绝
+
+- `TC-AUTH-013`
+  - 场景：改密码
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：新密码可登录，旧密码失败
+
+- `TC-AUTH-014`
+  - 场景：找回密码
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：发邮件
+
+- `TC-AUTH-015`
+  - 场景：重置密码
+  - 类型：I/E
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：新密码生效
+
+- `TC-AUTH-016`
+  - 场景：恢复码
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：登录成功/码失效
+
+- `TC-AUTH-017`
+  - 场景：TFA 启用/关闭
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`tfa_enabled` 变化；关闭时清空 `totp_secret` 与 `recovery_codes`
+
+- `TC-AUTH-018`
+  - 场景：TFA 登录完整流程
+  - 类型：E
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：密码→验证码→登录
+
+- `TC-AUTH-019`
+  - 场景：TFA 待验证不能绕过
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：受保护页拒绝
+
+- `TC-AUTH-020`
+  - 场景：禁用账号旧会话即时失效
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：下一次请求 `user_loader` 返回 None、清除 `_user_id`；受保护页 302；重新启用后仍需登录
+
+- `TC-AUTH-021`
+  - 场景：开放重定向
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`next` 外部 URL 被拒
+
+- `TC-AUTH-022`
+  - 场景：重复提交/并发注册
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：唯一约束生效
+
+- `TC-AUTH-029`
+  - 场景：禁用账号拒绝登录
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：正确密码但不建立 `_user_id`；提示账号已禁用
+
+- `TC-AUTH-030`
+  - 场景：禁用账号不能完成 pending TFA
+  - 类型：I
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：pending 被清理，重定向登录
+
+- `TC-AUTH-031`
+  - 场景：连续密码失败触发锁定
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：第 N 次失败后 `failed_login_count`/`locked_until` 写入；锁定期内正确密码也被拒；错误提示含剩余时间
+
+- `TC-AUTH-032`
+  - 场景：第二因子失败计入同一锁定
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：TFA 连续错误后账号锁定，pending 被清理，GET 校验页重定向登录
+
+- `TC-AUTH-033`
+  - 场景：锁定过期与成功登录清零
+  - 类型：U/I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：过期后可登录；成功登录、成功重置密码把两列清零；退避按 2 的幂增长并被上限截断
 
 ### 7.8 Emailer
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-EMAIL-001 | 信号触发发送 | U | P0 | 现有 | sender 收到 data |
-| TC-EMAIL-002 | 缺少 `type` | U | P1 | 待补 | warning，不发送 |
-| TC-EMAIL-003 | 未知 sender | U | P1 | 现有 | warning 不抛；记录 type + 脱敏收件人，不含令牌/链接 |
-| TC-EMAIL-004 | SMTP 成功（mock） | U | P1 | 现有（基础） | 调用成功 |
-| TC-EMAIL-005 | SMTP 异常 | U | P1 | 现有 | `SMTP_SSL` 抛出证书校验错误时包装为 `SmtpError`，`__cause__` 保留原异常 |
-| TC-EMAIL-006 | 重复注册 sender | U | P1 | 待补 | `ValueError` |
-| TC-EMAIL-007 | 默认 sender 配置存在/缺失 | U | P1 | 待补 | 注册/不注册 |
-| TC-EMAIL-008 | 验证邮件/重置邮件内容 | I | P1 | 待补 | 主题/链接/收件人 |
-| TC-EMAIL-009 | `email_change` 复用 `verify_email` sender | I | P0 | 待补 | 收件人为新邮箱，链接指向 `confirm_email_change` |
+- `TC-EMAIL-001`
+  - 场景：信号触发发送
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：sender 收到 data
+
+- `TC-EMAIL-002`
+  - 场景：缺少 `type`
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：warning，不发送
+
+- `TC-EMAIL-003`
+  - 场景：未知 sender
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：warning 不抛；记录 type + 脱敏收件人，不含令牌/链接
+
+- `TC-EMAIL-004`
+  - 场景：SMTP 成功（mock）
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有（基础）
+  - 关键断言：调用成功
+
+- `TC-EMAIL-005`
+  - 场景：SMTP 异常
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：`SMTP_SSL` 抛出证书校验错误时包装为 `SmtpError`，`__cause__` 保留原异常
+
+- `TC-EMAIL-006`
+  - 场景：重复注册 sender
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：`ValueError`
+
+- `TC-EMAIL-007`
+  - 场景：默认 sender 配置存在/缺失
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：注册/不注册
+
+- `TC-EMAIL-008`
+  - 场景：验证邮件/重置邮件内容
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：主题/链接/收件人
+
+- `TC-EMAIL-009`
+  - 场景：`email_change` 复用 `verify_email` sender
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：收件人为新邮箱，链接指向 `confirm_email_change`
 
 ### 7.9 Frontend
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-FRONTEND-001 | 插件自动发现 | U | P0 | 现有（间接） | 注册表包含内置插件 |
-| TC-FRONTEND-002 | 重复插件名 | U | P0 | 现有 | `ValueError` |
-| TC-FRONTEND-003 | 默认插件顺序 | U | P0 | 现有 | 输入顺序保留 |
-| TC-FRONTEND-004 | 请求插件依赖排序 | U | P0 | 现有 | 依赖在前 |
-| TC-FRONTEND-005 | 循环依赖 | U | P0 | 现有 | `PluginCycleError` |
-| TC-FRONTEND-006 | 未知插件 | U | P1 | 待补 | `ValueError` |
-| TC-FRONTEND-007 | 样式/脚本拼接顺序 | U | P1 | 现有 | 依赖顺序 + `Markup` |
-| TC-FRONTEND-008 | Jinja 全局变量 | I | P0 | 现有 | `_template`/`csrf_token` |
-| TC-FRONTEND-009 | 模板集成 | I | P1 | 待补 | 页面包含插件资源 |
-| TC-FRONTEND-010 | vendor 资源存在 | U | P2 | 待补 | 关键文件存在 |
+- `TC-FRONTEND-001`
+  - 场景：插件自动发现
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有（间接）
+  - 关键断言：注册表包含内置插件
+
+- `TC-FRONTEND-002`
+  - 场景：重复插件名
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`ValueError`
+
+- `TC-FRONTEND-003`
+  - 场景：默认插件顺序
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：输入顺序保留
+
+- `TC-FRONTEND-004`
+  - 场景：请求插件依赖排序
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：依赖在前
+
+- `TC-FRONTEND-005`
+  - 场景：循环依赖
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`PluginCycleError`
+
+- `TC-FRONTEND-006`
+  - 场景：未知插件
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：`ValueError`
+
+- `TC-FRONTEND-007`
+  - 场景：样式/脚本拼接顺序
+  - 类型：U
+  - 优先级：P1
+  - 状态：现有
+  - 关键断言：依赖顺序 + `Markup`
+
+- `TC-FRONTEND-008`
+  - 场景：Jinja 全局变量
+  - 类型：I
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`_template`/`csrf_token`
+
+- `TC-FRONTEND-009`
+  - 场景：模板集成
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：页面包含插件资源
+
+- `TC-FRONTEND-010`
+  - 场景：vendor 资源存在
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：关键文件存在
 
 ### 7.10 Commands
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-CLI-001 | `datastore create_all` | I | P1 | 待补 | 表创建 |
-| TC-CLI-002 | `datastore drop_all` | I | P1 | 待补 | 表删除 |
-| TC-CLI-003 | `security create_user` | I | P1 | 待补 | 用户创建 |
-| TC-CLI-004 | 重复用户 | I | P1 | 待补 | 错误提示 |
-| TC-CLI-005 | `--active` / `--email` | I | P1 | 待补 | 属性正确 |
-| TC-CLI-006 | 命令注册/帮助 | I | P2 | 待补 | 命令可见 |
+- `TC-CLI-001`
+  - 场景：`datastore create_all`
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：表创建
+
+- `TC-CLI-002`
+  - 场景：`datastore drop_all`
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：表删除
+
+- `TC-CLI-003`
+  - 场景：`security create_user`
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：用户创建
+
+- `TC-CLI-004`
+  - 场景：重复用户
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：错误提示
+
+- `TC-CLI-005`
+  - 场景：`--active` / `--email`
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：属性正确
+
+- `TC-CLI-006`
+  - 场景：命令注册/帮助
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：命令可见
 
 CLI 测试写法：
 
@@ -1171,7 +2475,6 @@ def test_cli_create_all(app):
     result = runner.invoke(args=["datastore", "create_all"])
     assert result.exit_code == 0
     assert "create_all" in result.output
-
 
 def test_cli_create_user(app):
     runner = app.test_cli_runner()
@@ -1192,56 +2495,218 @@ def test_cli_create_user(app):
 
 事务回滚、级联删除、外键完整性目前均未覆盖，建议补充：
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-DATA-019 | 正常提交后数据持久化 | I | P0 | 待补 | 重新查询可见 |
-| TC-DATA-020 | 视图异常时回滚 | I | P0 | 待补 | 无部分写入 |
-| TC-DATA-021 | `IntegrityError` 后 session 可复用 | I | P0 | 待补 | `rollback()` 后可继续查询/写入 |
-| TC-DATA-022 | 级联删除（`cascade="all, delete-orphan"`） | I | P1 | 待补 | 子记录一并删除 |
-| TC-DATA-023 | 受限删除（无级联） | I | P1 | 待补 | 抛 `IntegrityError` 或按设计拒绝 |
-| TC-DATA-024 | 外键完整性 | I | P0 | 待补 | 非法外键被拒绝（SQLite 需 `PRAGMA foreign_keys=ON`） |
-| TC-DATA-025 | 唯一约束 | I | P0 | 待补 | 重复用户名/邮箱被拒绝 |
-| TC-DATA-026 | 并发更新/丢失更新 | I | P2 | 待补 | 记录当前行为，不假设乐观锁 |
-| TC-DATA-027 | 一对多增删后计数一致 | I | P0 | 待补 | `count` 与根记录数一致（对应 C2） |
+- `TC-DATA-019`
+  - 场景：正常提交后数据持久化
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：重新查询可见
+
+- `TC-DATA-020`
+  - 场景：视图异常时回滚
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：无部分写入
+
+- `TC-DATA-021`
+  - 场景：`IntegrityError` 后 session 可复用
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`rollback()` 后可继续查询/写入
+
+- `TC-DATA-022`
+  - 场景：级联删除（`cascade="all, delete-orphan"`）
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：子记录一并删除
+
+- `TC-DATA-023`
+  - 场景：受限删除（无级联）
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：抛 `IntegrityError` 或按设计拒绝
+
+- `TC-DATA-024`
+  - 场景：外键完整性
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：非法外键被拒绝（SQLite 需 `PRAGMA foreign_keys=ON`）
+
+- `TC-DATA-025`
+  - 场景：唯一约束
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：重复用户名/邮箱被拒绝
+
+- `TC-DATA-026`
+  - 场景：并发更新/丢失更新
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：记录当前行为，不假设乐观锁
+
+- `TC-DATA-027`
+  - 场景：一对多增删后计数一致
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`count` 与根记录数一致（对应 CR-002）
 
 > SQLite 默认不启用外键约束。测试 TC-DATA-024 前必须显式执行 `PRAGMA foreign_keys=ON`，否则会“假通过”。
 
 ### 7.12 错误处理与信号契约
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-ERROR-001 | 未知路由 404 | I | P1 | 待补 | 状态码 404，模板可渲染 |
-| TC-ERROR-002 | 无权限 403 | I | P0 | 待补 | 普通用户访问 admin 被拒 |
-| TC-ERROR-003 | 方法不允许 405 | I | P2 | 待补 | 状态码 405 |
-| TC-ERROR-004 | 未捕获异常 | I | P2 | 待补 | `TESTING=True` 下异常上抛；生产配置下 500 页 |
-| TC-ERROR-005 | 无效/过期令牌页 | I | P0 | 待补 | 友好错误，不泄露用户信息 |
-| TC-ERROR-006 | 畸形表单数据 | I | P1 | 待补 | 400/表单错误，不 500 |
-| TC-ERROR-007 | 未知导出类型 | I | P2 | 待补 | 明确错误，不崩溃 |
-| TC-ERROR-008 | CSRF 校验失败 | I | P0 | 待补 | 拒绝提交，提示可理解 |
+- `TC-ERROR-001`
+  - 场景：未知路由 404
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：状态码 404，模板可渲染
+
+- `TC-ERROR-002`
+  - 场景：无权限 403
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：普通用户访问 admin 被拒
+
+- `TC-ERROR-003`
+  - 场景：方法不允许 405
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：状态码 405
+
+- `TC-ERROR-004`
+  - 场景：未捕获异常
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：`TESTING=True` 下异常上抛；生产配置下 500 页
+
+- `TC-ERROR-005`
+  - 场景：无效/过期令牌页
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：友好错误，不泄露用户信息
+
+- `TC-ERROR-006`
+  - 场景：畸形表单数据
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：400/表单错误，不 500
+
+- `TC-ERROR-007`
+  - 场景：未知导出类型
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：明确错误，不崩溃
+
+- `TC-ERROR-008`
+  - 场景：CSRF 校验失败
+  - 类型：I
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：拒绝提交，提示可理解
 
 信号契约：
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-SIGNAL-001 | `user_registered` 载荷 | U | P0 | 待补 | `user` 为刚创建用户 |
-| TC-SIGNAL-002 | `verify_email` 邮件字段 | U | P0 | 待补 | `type=verify_email`、`email`、`verification_token`、`verification_link` |
-| TC-SIGNAL-003 | `reset_password` 邮件字段 | U | P0 | 待补 | `type=reset_password`、`email`、`reset_password_token`、`reset_password_link` |
-| TC-SIGNAL-004 | `email_change` 邮件字段 | U | P0 | 待补 | `type=verify_email`、`email`（新邮箱）、`verification_token`、`verification_link` |
-| TC-SIGNAL-005 | 未注册 sender | U | P1 | 待补 | warning，不抛异常 |
-| TC-SIGNAL-006 | sender 抛 `SmtpError` | U | P1 | 待补 | 被捕获，返回提示 |
+- `TC-SIGNAL-001`
+  - 场景：`user_registered` 载荷
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`user` 为刚创建用户
+
+- `TC-SIGNAL-002`
+  - 场景：`verify_email` 邮件字段
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`type=verify_email`、`email`、`verification_token`、`verification_link`
+
+- `TC-SIGNAL-003`
+  - 场景：`reset_password` 邮件字段
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`type=reset_password`、`email`、`reset_password_token`、`reset_password_link`
+
+- `TC-SIGNAL-004`
+  - 场景：`email_change` 邮件字段
+  - 类型：U
+  - 优先级：P0
+  - 状态：待补
+  - 关键断言：`type=verify_email`、`email`（新邮箱）、`verification_token`、`verification_link`
+
+- `TC-SIGNAL-005`
+  - 场景：未注册 sender
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：warning，不抛异常
+
+- `TC-SIGNAL-006`
+  - 场景：sender 抛 `SmtpError`
+  - 类型：U
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：被捕获，返回提示
 
 > `email_change` 复用 `type=verify_email`，但收件人是新邮箱；断言时结合 `email` 或 token 键区分，不能只按 `type` 判断。
 
 ### 7.13 i18n、时区与复数
 
-| ID | 场景 | 类型 | 优先级 | 状态 | 关键断言 |
-| --- | --- | --- | --- | --- | --- |
-| TC-I18N-001 | 默认语言 | I | P1 | 待补 | 按 `BABEL_DEFAULT_LOCALE` 渲染 |
-| TC-I18N-002 | `?lang=zh` 切换 | I | P1 | 待补 | 文本变为中文，cookie/session 生效 |
-| TC-I18N-003 | 不支持语言回退 | I | P1 | 待补 | 回退默认语言，不报错 |
-| TC-I18N-004 | 时区渲染 | I | P2 | 待补 | 按 `BABEL_DEFAULT_TIMEZONE` 输出 |
-| TC-I18N-005 | 复数形式 | U | P2 | 待补 | 单复数选择正确 |
-| TC-I18N-006 | 缺失翻译回退 | U | P2 | 待补 | 回退 msgid，不抛异常 |
+- `TC-I18N-001`
+  - 场景：默认语言
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：按 `BABEL_DEFAULT_LOCALE` 渲染
+
+- `TC-I18N-002`
+  - 场景：`?lang=zh` 切换
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：文本变为中文，cookie/session 生效
+
+- `TC-I18N-003`
+  - 场景：不支持语言回退
+  - 类型：I
+  - 优先级：P1
+  - 状态：待补
+  - 关键断言：回退默认语言，不报错
+
+- `TC-I18N-004`
+  - 场景：时区渲染
+  - 类型：I
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：按 `BABEL_DEFAULT_TIMEZONE` 输出
+
+- `TC-I18N-005`
+  - 场景：复数形式
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：单复数选择正确
+
+- `TC-I18N-006`
+  - 场景：缺失翻译回退
+  - 类型：U
+  - 优先级：P2
+  - 状态：待补
+  - 关键断言：回退 msgid，不抛异常
 
 ## 8. 端到端测试方案
 
@@ -1249,31 +2714,91 @@ def test_cli_create_user(app):
 
 ### 8.1 两种 E2E
 
-| 方式 | 工具 | 优点 | 缺点 | 建议 |
-| --- | --- | --- | --- | --- |
-| HTTP 级 E2E | Flask `test_client` | 快、稳定、无浏览器依赖 | 不验证 JS/CSS | **默认采用** |
-| 浏览器 E2E | Selenium/Playwright | 验证真实 UI/JS | 慢、脆弱、需环境 | 可选、夜间运行 |
+- **HTTP 级 E2E**
+  - 工具：Flask `test_client`
+  - 优点：快、稳定、无浏览器依赖
+  - 缺点：不验证 JS/CSS
+  - 建议：**默认采用**
+
+- **浏览器 E2E**
+  - 工具：Selenium/Playwright
+  - 优点：验证真实 UI/JS
+  - 缺点：慢、脆弱、需环境
+  - 建议：可选、夜间运行
 
 Selenium/Playwright 属于第二种。建议先用 HTTP 级 E2E 覆盖业务旅程，再对少数 JS 交互补浏览器测试。
 
 ### 8.2 HTTP E2E 流程清单
 
-| ID | 流程 | 步骤 | 关键断言 |
-| --- | --- | --- | --- |
-| TC-AUTH-023 | 注册 → 验证 → 登录 | 注册 → 捕获邮件 → 访问验证链接 → 登录 | 用户激活、登录成功、资料页可访问 |
-| TC-AUTH-024 | 登录 → TFA → 访问 | 登录（密码）→ 跳转 TFA → 输入 TOTP → 访问受保护页 | TFA 前拒绝、TFA 后 200 |
-| TC-AUTH-025 | 找回 → 重置 → 登录 | 提交邮箱 → 捕获链接 → 设置新密码 → 登录 | 新密码成功、旧密码失败 |
-| TC-AUTH-026 | 改邮箱 | 登录 → 改邮箱 → 捕获确认链接 → 访问 → 用新邮箱登录 | 旧邮箱失效、新邮箱生效 |
-| TC-AUTH-027 | 恢复码登录 | 启用 TFA → 登出 → 用恢复码登录 | 成功、恢复码失效 |
-| TC-ADMIN-034 | Admin CRUD | 登录 admin → 创建 → 编辑 → 删除 | 列表/DB 状态 |
-| TC-ADMIN-035 | 搜索/筛选/排序/分页 | 造数据 → 访问带参数 URL | 结果正确、计数正确 |
-| TC-ADMIN-036 | Inline | 创建父+子 → 编辑 → 删除子 | 父子状态 |
-| TC-ADMIN-037 | 导出 | 访问导出 URL | CSV 内容/表头 |
-| TC-ADMIN-038 | 权限 | 匿名/普通/admin/未激活 | 重定向/403/200 |
-| TC-ADMIN-039 | Inline + AJAX 外键 | 配置子模型 `ajax_refs` → 打开创建页 → 搜索 → 保存 | 页面 200、JSON 正确、父子落库（对应 C1） |
-| TC-AUTH-028 | 令牌重复/过期 | 使用已验证/已过期链接再次访问 | 友好提示，不重复生效 |
-| TC-ERROR-009 | 错误页 | 访问不存在路由、无权限路由 | 404/403 页面可渲染 |
-| TC-I18N-007 | 语言切换 | 带 `?lang=zh` 访问 | 文本语言变化 |
+- `TC-AUTH-023`
+  - 流程：注册 → 验证 → 登录
+  - 步骤：注册 → 捕获邮件 → 访问验证链接 → 登录
+  - 关键断言：用户激活、登录成功、资料页可访问
+
+- `TC-AUTH-024`
+  - 流程：登录 → TFA → 访问
+  - 步骤：登录（密码）→ 跳转 TFA → 输入 TOTP → 访问受保护页
+  - 关键断言：TFA 前拒绝、TFA 后 200
+
+- `TC-AUTH-025`
+  - 流程：找回 → 重置 → 登录
+  - 步骤：提交邮箱 → 捕获链接 → 设置新密码 → 登录
+  - 关键断言：新密码成功、旧密码失败
+
+- `TC-AUTH-026`
+  - 流程：改邮箱
+  - 步骤：登录 → 改邮箱 → 捕获确认链接 → 访问 → 用新邮箱登录
+  - 关键断言：旧邮箱失效、新邮箱生效
+
+- `TC-AUTH-027`
+  - 流程：恢复码登录
+  - 步骤：启用 TFA → 登出 → 用恢复码登录
+  - 关键断言：成功、恢复码失效
+
+- `TC-ADMIN-034`
+  - 流程：Admin CRUD
+  - 步骤：登录 admin → 创建 → 编辑 → 删除
+  - 关键断言：列表/DB 状态
+
+- `TC-ADMIN-035`
+  - 流程：搜索/筛选/排序/分页
+  - 步骤：造数据 → 访问带参数 URL
+  - 关键断言：结果正确、计数正确
+
+- `TC-ADMIN-036`
+  - 流程：Inline
+  - 步骤：创建父+子 → 编辑 → 删除子
+  - 关键断言：父子状态
+
+- `TC-ADMIN-037`
+  - 流程：导出
+  - 步骤：访问导出 URL
+  - 关键断言：CSV 内容/表头
+
+- `TC-ADMIN-038`
+  - 流程：权限
+  - 步骤：匿名/普通/admin/未激活
+  - 关键断言：重定向/403/200
+
+- `TC-ADMIN-039`
+  - 流程：Inline + AJAX 外键
+  - 步骤：配置子模型 `ajax_refs` → 打开创建页 → 搜索 → 保存
+  - 关键断言：页面 200、JSON 正确、父子落库（对应 CR-001）
+
+- `TC-AUTH-028`
+  - 流程：令牌重复/过期
+  - 步骤：使用已验证/已过期链接再次访问
+  - 关键断言：友好提示，不重复生效
+
+- `TC-ERROR-009`
+  - 流程：错误页
+  - 步骤：访问不存在路由、无权限路由
+  - 关键断言：404/403 页面可渲染
+
+- `TC-I18N-007`
+  - 流程：语言切换
+  - 步骤：带 `?lang=zh` 访问
+  - 关键断言：文本语言变化
 
 ### 8.3 HTTP E2E 示例
 
@@ -1284,12 +2809,10 @@ import re
 import pytest
 from flask import url_for
 
-
 def extract_token(link):
     match = re.search(r"[?&]token=([^&]+)", link)
     assert match, f"token not found in {link!r}"
     return match.group(1)
-
 
 @pytest.mark.e2e
 def test_signup_verify_login(app, client, mail_outbox):
@@ -1400,12 +2923,21 @@ CI 中仅在 nightly 或手动触发，失败保存截图/HTML。
 
 ### 9.2 工具
 
-| 工具 | 用途 | 是否已有依赖 |
-| --- | --- | --- |
-| `pytest-benchmark` | 查询/渲染耗时基准 | 否，需新增（需询问） |
-| SQLAlchemy `event` | 统计查询次数，检测 N+1 | 是（SQLAlchemy 自带） |
-| `tracemalloc` | 内存快照 | 是（标准库） |
-| `cProfile` / `py-spy` | 性能剖析 | 可选 |
+- `pytest-benchmark`
+  - 用途：查询/渲染耗时基准
+  - 是否已有依赖：否，需新增（需询问）
+
+- **SQLAlchemy `event`**
+  - 用途：统计查询次数，检测 N+1
+  - 是否已有依赖：是（SQLAlchemy 自带）
+
+- `tracemalloc`
+  - 用途：内存快照
+  - 是否已有依赖：是（标准库）
+
+- `cProfile` / `py-spy`
+  - 用途：性能剖析
+  - 是否已有依赖：可选
 
 如果不引入 `pytest-benchmark`，也可以先用 `time.perf_counter()` + `pytest.mark.performance` 做简单阈值断言。但基准工具更适合统计波动。
 
@@ -1413,16 +2945,45 @@ CI 中仅在 nightly 或手动触发，失败保存截图/HTML。
 
 结合本项目实际确定基准指标：
 
-| 操作 | 数据量 | 目标 | 说明 |
-| --- | ---: | --- | --- |
-| Admin 列表查询 | 1,000 | < 500ms | 不含模板渲染 |
-| Admin 搜索 | 10,000 | < 1000ms | 单列/关联列分别测 |
-| Admin 筛选 | 10,000 | < 1000ms | 常用操作符 |
-| 表单渲染 | 50 字段 | < 100ms | 不含 DB |
-| 列表模板渲染 | 100 行 | < 500ms | 含 Jinja |
-| 登录（含哈希） | 1 用户 | < 200ms | 含密码校验 |
-| 批量删除 | 1,000 | < 5s | 含提交 |
-| 注册+发信 | 1 用户 | < 300ms | 邮件 mock |
+- **Admin 列表查询**
+  - 数据量：1,000
+  - 目标：< 500ms
+  - 说明：不含模板渲染
+
+- **Admin 搜索**
+  - 数据量：10,000
+  - 目标：< 1000ms
+  - 说明：单列/关联列分别测
+
+- **Admin 筛选**
+  - 数据量：10,000
+  - 目标：< 1000ms
+  - 说明：常用操作符
+
+- **表单渲染**
+  - 数据量：50 字段
+  - 目标：< 100ms
+  - 说明：不含 DB
+
+- **列表模板渲染**
+  - 数据量：100 行
+  - 目标：< 500ms
+  - 说明：含 Jinja
+
+- **登录（含哈希）**
+  - 数据量：1 用户
+  - 目标：< 200ms
+  - 说明：含密码校验
+
+- **批量删除**
+  - 数据量：1,000
+  - 目标：< 5s
+  - 说明：含提交
+
+- **注册+发信**
+  - 数据量：1 用户
+  - 目标：< 300ms
+  - 说明：邮件 mock
 
 > 这些是**初始目标**，不是硬性 SLA。首次运行后应根据机器性能调整，并记录基线。
 
@@ -1432,7 +2993,6 @@ CI 中仅在 nightly 或手动触发，失败保存截图/HTML。
 # tests/performance/test_n_plus_one.py
 import pytest
 from sqlalchemy import event
-
 
 @pytest.mark.performance
 def test_admin_list_has_no_n_plus_one(app, client, admin, login_as_admin, query_counter):
@@ -1489,7 +3049,6 @@ def query_counter(app):
 # tests/performance/test_query_perf.py
 import pytest
 
-
 @pytest.mark.performance
 @pytest.mark.slow
 def test_admin_list_query_performance(benchmark, app, client, admin, login_as_admin, seeded_db):
@@ -1516,7 +3075,6 @@ python -m pytest -q tests/performance -m performance
 ```python
 import tracemalloc
 
-
 @pytest.mark.performance
 def test_no_obvious_memory_leak(app, client):
     tracemalloc.start()
@@ -1537,12 +3095,45 @@ def test_no_obvious_memory_leak(app, client):
 
 首次运行后，把结果记录在团队可访问的位置（本文附录或 CI artifact）：
 
-| 日期 | commit | 机器/CI | 场景 | 数据量 | p50 | p95 | 查询数 | 备注 |
-| --- | --- | --- | --- | ---: | ---: | ---: | ---: | --- |
-| 2026-11-07 | 未记录 | local | Admin 列表 | 1,000 | — | — | — | 初始基线待测 |
-| 2026-11-07 | 未记录 | local | Admin 搜索 | 10,000 | — | — | — | 单列/关联列分开 |
-| 2026-11-07 | 未记录 | local | 列表渲染 | 100 行 | — | — | — | 含 Jinja |
-| 2026-11-07 | 未记录 | local | 登录 | 1 用户 | — | — | — | 含哈希 |
+- **2026-11-07 · Admin 列表**
+  - commit：未记录
+  - 机器/CI：local
+  - 场景：Admin 列表
+  - 数据量：1,000
+  - p50：—
+  - p95：—
+  - 查询数：—
+  - 备注：初始基线待测
+
+- **2026-11-07 · Admin 搜索**
+  - commit：未记录
+  - 机器/CI：local
+  - 场景：Admin 搜索
+  - 数据量：10,000
+  - p50：—
+  - p95：—
+  - 查询数：—
+  - 备注：单列/关联列分开
+
+- **2026-11-07 · 列表渲染**
+  - commit：未记录
+  - 机器/CI：local
+  - 场景：列表渲染
+  - 数据量：100 行
+  - p50：—
+  - p95：—
+  - 查询数：—
+  - 备注：含 Jinja
+
+- **2026-11-07 · 登录**
+  - commit：未记录
+  - 机器/CI：local
+  - 场景：登录
+  - 数据量：1 用户
+  - p50：—
+  - p95：—
+  - 查询数：—
+  - 备注：含哈希
 
 规则：
 
@@ -1616,19 +3207,101 @@ show_missing = true
 
 > **口径说明**：2026-11-12 之前的记录未限制 `source`，`coverage run -m pytest` 同时统计了 `tests/` 与库代码，且未计入未被导入的源码文件，因此与当前“仅 `src/flask_exts`”的口径不可直接比较。以下旧行保留作历史记录，自 2026-11-12 口径修正行起使用新口径。
 
-| 日期 | commit | 行覆盖 | 分支覆盖 | 函数覆盖 | 命令 | 备注 |
-| --- | --- | ---: | ---: | ---: | --- | --- |
-| 2026-11-10 | `171b40968f309c04ae3ad423696227c2767b0055` | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 首次实测基线（229 passed, 1 skipped；全套 31.81s） |
-| 2026-11-11 | `171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 当前工作树复测（233 passed, 1 skipped；全套 32.79s；8601 statements, 866 missed） |
-| 2026-11-11 | `171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 修复 `ChoiceField` 后复测（245 passed, 1 skipped；全套 32.49s；8685 statements, 862 missed） |
-| 2026-11-11 | `03006024d21167c0f6285a5724a3be5ef24d9a59`（v0.4.1） | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 发布提交复测（245 passed, 1 skipped；全套 31.25s；8685 statements, 862 missed） |
-| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 注册邮箱校验、C5/C6 修复 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 251 passed, 1 skipped；全套 32.86s；8750 statements, 861 missed |
-| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 EXT-004 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 257 passed, 1 skipped；全套 32.31s；8815 statements, 858 missed |
-| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-009 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 259 passed, 1 skipped；全套 34.25s；8837 statements, 855 missed |
-| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-010 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 261 passed, 1 skipped；全套 34.32s；8865 statements, 857 missed |
-| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 `requires_active` 移除 | 90% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q` | 259 passed, 1 skipped；全套 33.09s；8833 statements, 855 missed |
-| 2026-11-12 | `03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与覆盖率口径修正 | 83% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 259 passed, 1 skipped；全套 36.72s；5276 statements, 905 missed |
-| 2026-11-13 | `445b03d1fe6c59cd53405c8187de968c687a2909` | 84% | 待测（未启 branch） | 待测 | `coverage run -m pytest -q`（`source = ["src/flask_exts"]`） | 274 passed；全套 49.16s；5361 statements, 884 missed |
+- **2026-11-10 · 171b409**
+  - commit：`171b40968f309c04ae3ad423696227c2767b0055`
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：首次实测基线（229 passed, 1 skipped；全套 31.81s）
+
+- **2026-11-11 · 171b409**
+  - commit：`171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动）
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：当前工作树复测（233 passed, 1 skipped；全套 32.79s；8601 statements, 866 missed）
+
+- **2026-11-11 · 171b409**
+  - commit：`171b40968f309c04ae3ad423696227c2767b0055`（工作树含未提交改动）
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：修复 `ChoiceField` 后复测（245 passed, 1 skipped；全套 32.49s；8685 statements, 862 missed）
+
+- **2026-11-11 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59`（v0.4.1）
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：发布提交复测（245 passed, 1 skipped；全套 31.25s；8685 statements, 862 missed）
+
+- **2026-11-12 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59` + 注册邮箱校验、CR-005/CR-006 修复
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：251 passed, 1 skipped；全套 32.86s；8750 statements, 861 missed
+
+- **2026-11-12 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 EXT-004
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：257 passed, 1 skipped；全套 32.31s；8815 statements, 858 missed
+
+- **2026-11-12 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-009
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：259 passed, 1 skipped；全套 34.25s；8837 statements, 855 missed
+
+- **2026-11-12 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 AUTH-010
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：261 passed, 1 skipped；全套 34.32s；8865 statements, 857 missed
+
+- **2026-11-12 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与 `requires_active` 移除
+  - 行覆盖：90%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`
+  - 备注：259 passed, 1 skipped；全套 33.09s；8833 statements, 855 missed
+
+- **2026-11-12 · 0300602**
+  - commit：`03006024d21167c0f6285a5724a3be5ef24d9a59` + 上述改动与覆盖率口径修正
+  - 行覆盖：83%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`（`source = ["src/flask_exts"]`）
+  - 备注：259 passed, 1 skipped；全套 36.72s；5276 statements, 905 missed
+
+- **2026-11-13 · 445b03d**
+  - commit：`445b03d1fe6c59cd53405c8187de968c687a2909`
+  - 行覆盖：84%
+  - 分支覆盖：待测（未启 branch）
+  - 函数覆盖：待测
+  - 命令：`coverage run -m pytest -q`（`source = ["src/flask_exts"]`）
+  - 备注：274 passed；全套 49.16s；5361 statements, 884 missed
+
+- **2026-11-13 · 445b03d**
+  - commit：`445b03d1fe6c59cd53405c8187de968c687a2909`（同提交复跑）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`uv run pytest -q -p no:cacheprovider`
+  - 备注：274 passed、0 跳过；10.02s；Python 3.13.5；逐条判定契约 `verification` 所用证据
 
 规则：
 
@@ -1638,15 +3311,13 @@ show_missing = true
 
 ### 10.6 排除项与理由
 
-| 排除项 | 理由 |
-| --- | --- |
-| `*/static/vendor/*` | 第三方生成资源，不手改 |
-| `*/examples/*` | 示例应用，不是库代码 |
-| `*/tests/*` | 测试自身 |
-| `*/migrations/*` | 若未来引入，单独统计 |
-| `__main__` / CLI 入口 | 薄封装，由 CLI 用例覆盖 |
+- `*/static/vendor/*`：第三方生成资源，不手改
+- `*/examples/*`：示例应用，不是库代码
+- `*/tests/*`：测试自身
+- `*/migrations/*`：若未来引入，单独统计
+- `__main__` / CLI 入口：薄封装，由 CLI 用例覆盖
 
-不要为了让数字好看而排除业务模块；任何新增排除项都必须在本表登记。
+不要为了让数字好看而排除业务模块；任何新增排除项都必须在本节登记。
 
 ## 11. CI 流水线
 
@@ -1706,11 +3377,17 @@ python -m pytest -q tests/performance -m performance
 
 权威来源为仓库 `.github/workflows/ci.yml`；本节只描述职责，不复制完整 YAML。
 
-| Job | 触发 | 内容 |
-| --- | --- | --- |
-| `tests` | push / PR / 手动 | Python 3.11、3.12、3.13 矩阵；`uv sync --locked` 后运行 `uv run pytest -q`。3.11 验证最低支持，3.13 验证主力版本 |
-| `coverage` | push / PR / 手动 | Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m`；覆盖率输出到 CI 日志，不上传 artifact；未设置 `fail-under` 门槛 |
-| `lint` | 仅 PR | 仅对变更文件运行 `ruff check`、`ruff format --check` 与 `djlint --check`，规避仓库历史格式问题 |
+- `tests`
+  - 触发：push / PR / 手动
+  - 内容：Python 3.11、3.12、3.13 矩阵；`uv sync --locked` 后运行 `uv run pytest -q`。3.11 验证最低支持，3.13 验证主力版本
+
+- `coverage`
+  - 触发：push / PR / 手动
+  - 内容：Python 3.13；`uv run coverage run -m pytest -q` + `coverage report -m`；覆盖率输出到 CI 日志，不上传 artifact；未设置 `fail-under` 门槛
+
+- `lint`
+  - 触发：仅 PR
+  - 内容：仅对变更文件运行 `ruff check`、`ruff format --check` 与 `djlint --check`，规避仓库历史格式问题
 
 说明：
 
@@ -1719,6 +3396,7 @@ python -m pytest -q tests/performance -m performance
 - 主力 Python 版本锚定 Debian stable（当前 3.13），最低支持保持 3.11；决策见 [`architecture.md` ADR-005](./architecture.md#adr-005-开发与主力验证-python-版本锚定-debian-stable)。
 - 仓库存在历史 Ruff/模板格式问题，`ruff`/`djlint` 在 CI 中只检查**本次变更文件**，不要全量检查。
 - 夜间任务可单独加 `browser` 与 `performance` job，允许失败但不阻塞主分支；当前尚未落地。
+- 治理文档与 Demo 冒烟门禁（P0-3 / P0-4 目标）：后续在 CI 扩展时，推荐新增独立 job 执行 `FLASK_EXTS_REPO=. python check_docs.py`（核验契约引用、三维状态与缺陷编号规范）以及 Demo 基础路由导入与初始化冒烟，防止文档与示例在代码迭代中静默漂移。
 
 ### 11.4 产物
 
@@ -1727,16 +3405,37 @@ python -m pytest -q tests/performance -m performance
 
 ### 11.5 本地与 CI 一致性
 
-| 目标 | 本地命令 | CI 阶段 |
-| --- | --- | --- |
-| Lint | `uv run python -m ruff check .`（全量；CI 只查变更文件） | `lint` job（仅 PR） |
-| 模板 | `uv run python -m djlint <changed> --check` | `lint` job（仅 PR，变更模板） |
-| Unit | `uv run python -m pytest -q tests/unit` | `tests` job |
-| Integration | `uv run python -m pytest -q tests/integration` | `tests` job |
-| 覆盖率 | `uv run coverage run -m pytest -q` | `coverage` job（无门槛） |
-| 文档 | `uv run python -m sphinx -b html docs docs/_build/html -W -n --keep-going` | 独立 `docs.yml` |
-| E2E | `uv run python -m pytest -q tests/e2e -m e2e` | 未落地 |
-| 性能 | `uv run python -m pytest -q tests/performance -m performance` | 未落地（Nightly） |
+- **Lint**
+  - 本地命令：`uv run python -m ruff check .`（全量；CI 只查变更文件）
+  - CI 阶段：`lint` job（仅 PR）
+
+- **模板**
+  - 本地命令：`uv run python -m djlint <changed> --check`
+  - CI 阶段：`lint` job（仅 PR，变更模板）
+
+- **Unit**
+  - 本地命令：`uv run python -m pytest -q tests/unit`
+  - CI 阶段：`tests` job
+
+- **Integration**
+  - 本地命令：`uv run python -m pytest -q tests/integration`
+  - CI 阶段：`tests` job
+
+- **覆盖率**
+  - 本地命令：`uv run coverage run -m pytest -q`
+  - CI 阶段：`coverage` job（无门槛）
+
+- **文档**
+  - 本地命令：`uv run python -m sphinx -b html docs docs/_build/html -W -n --keep-going`
+  - CI 阶段：独立 `docs.yml`
+
+- **E2E**
+  - 本地命令：`uv run python -m pytest -q tests/e2e -m e2e`
+  - CI 阶段：未落地
+
+- **性能**
+  - 本地命令：`uv run python -m pytest -q tests/performance -m performance`
+  - CI 阶段：未落地（Nightly）
 
 仓库 `Makefile` 已提供 `coverage` / `coverage-report`，本地优先复用，避免命令漂移。
 
@@ -1779,8 +3478,8 @@ python -m pytest -q tests/performance -m performance
 
 #### Phase 2：Integration 补强（第 2 周）
 
-- [ ] TC-ADMIN-021：Inline + AJAX 外键（先写失败测试，修复 C1）
-- [x] TC-ADMIN-031：一对多搜索计数（C2 按列表行数一致）
+- [ ] TC-ADMIN-021：Inline + AJAX 外键（先写失败测试，修复 CR-001）
+- [x] TC-ADMIN-031：一对多搜索计数（CR-002 按列表行数一致）
 - [ ] TC-ADMIN-025/TC-ADMIN-026/TC-ADMIN-028：权限矩阵
 - [ ] TC-ADMIN-014/TC-ADMIN-015：导出边界与类型
 - [x] TC-ADMIN-032：URL 特殊字符（已补）
@@ -1823,26 +3522,79 @@ python -m pytest -q tests/performance -m performance
 
 ## 13. 测试目标与现状对照
 
-本表是测试目标与快照状态的唯一维护位置；当前状态引用前按第 1.5 节复核，阶段行动见第 12 节。
+本节是测试目标与快照状态的唯一维护位置；当前状态引用前按第 1.5 节复核，阶段行动见第 12 节。
 
-| 项目 | 目标 | 当前真实状态 | 本方案动作 |
-| --- | --- | --- | --- |
-| 集成测试 | 30+ | 约 80+ 个集成测试函数，已超额 | 不再追求数量，补关键缺口 |
-| E2E 测试 | 20+ | 0 | Phase 3 在 `tests/e2e/` 覆盖核心旅程；阶段验收见第 12 节 |
-| 性能测试 | 15+ | 0 | Phase 4 建 `tests/performance/` 并建立基线；阶段行动见第 12 节 |
-| 覆盖率 | ≥85% | 83%（2026-11-12 口径修正后，仅 `src/flask_exts`） | 未达标；作为基线监控，补关键路径测试 |
-| 分支覆盖 | ≥75% | 未测量 | 同上 |
-| 函数覆盖 | ≥90% | 未测量 | 同上 |
-| 关键路径 | 100% | 未系统定义 | 第 6/10 节已列清单 |
-| 测试框架 | pytest + 插件 | pytest + pytest-cov | 按需引入 benchmark/browser |
-| 测试目录 | unit/integration/e2e/performance | unit/integration | 按 Phase 创建 |
-| Fixtures | app/client/db/user/admin/auth | 已有 app/client/admin/login_as_admin | 补 db_setup/user_factory |
-| 数据库事务 | 有设计 | 0 | 新增 TC-DATA-019～TC-DATA-027 |
-| 错误处理 | 未明确 | 0 | 新增 TC-ERROR-001～TC-ERROR-008 |
-| CI/CD | 集成 | `ci.yml` 已运行 Python 3.11–3.13 矩阵、覆盖率报告与 PR 变更文件 lint；`docs.yml` 构建文档；尚无 `fail-under` 门槛与 E2E | Phase 4 补 |
-| 测试文档 | 完整 | 本文 v0.1 | 已补齐；按 Phase 0 升 v1.0 |
+- **集成测试**
+  - 目标：30+
+  - 当前真实状态：100 个集成测试函数（57 + 8 + 22 + 8 + 5），已超额
+  - 本方案动作：不再追求数量，补关键缺口
 
-**对历史“完成声明”的说明：**
+- **E2E 测试**
+  - 目标：20+
+  - 当前真实状态：0
+  - 本方案动作：Phase 3 在 `tests/e2e/` 覆盖核心旅程；阶段验收见第 12 节
+
+- **性能测试**
+  - 目标：15+
+  - 当前真实状态：0
+  - 本方案动作：Phase 4 建 `tests/performance/` 并建立基线；阶段行动见第 12 节
+
+- **覆盖率**
+  - 目标：≥85%
+  - 当前真实状态：84%（2026-11-13，仅 `src/flask_exts`）
+  - 本方案动作：未达标；作为基线监控，补关键路径测试
+
+- **分支覆盖**
+  - 目标：≥75%
+  - 当前真实状态：未测量
+  - 本方案动作：同上
+
+- **函数覆盖**
+  - 目标：≥90%
+  - 当前真实状态：未测量
+  - 本方案动作：同上
+
+- **关键路径**
+  - 目标：100%
+  - 当前真实状态：未系统定义
+  - 本方案动作：第 6/10 节已列清单
+
+- **测试框架**
+  - 目标：pytest + 插件
+  - 当前真实状态：pytest + pytest-cov
+  - 本方案动作：按需引入 benchmark/browser
+
+- **测试目录**
+  - 目标：unit/integration/e2e/performance
+  - 当前真实状态：unit/integration
+  - 本方案动作：按 Phase 创建
+
+- **Fixtures**
+  - 目标：app/client/db/user/admin/auth
+  - 当前真实状态：已有 app/client/admin/login_as_admin
+  - 本方案动作：补 db_setup/user_factory
+
+- **数据库事务**
+  - 目标：有设计
+  - 当前真实状态：0
+  - 本方案动作：新增 TC-DATA-019～TC-DATA-027
+
+- **错误处理**
+  - 目标：未明确
+  - 当前真实状态：0
+  - 本方案动作：新增 TC-ERROR-001～TC-ERROR-008
+
+- **CI/CD**
+  - 目标：集成
+  - 当前真实状态：`ci.yml` 已运行 Python 3.11–3.13 矩阵、覆盖率报告与 PR 变更文件 lint；`docs.yml` 构建文档；尚无 `fail-under` 门槛与 E2E
+  - 本方案动作：Phase 4 补
+
+- **测试文档**
+  - 目标：完整
+  - 当前真实状态：本文 v0.1
+  - 本方案动作：已补齐；按 Phase 0 升 v1.0
+
+**对历史“完成声明”的说明**：
 
 - 历史规划文档曾声称“95% 完成”，但“集成测试 30+ / E2E 20+ / 性能 15+”在验收清单中标记为“计划”，不是“已实现”。
 - 其中描述的 `tests/integration/conftest.py`、`tests/e2e/`、`tests/performance/` 在当前仓库中并不存在（当前只有各子目录的 `conftest.py`）。
@@ -1850,27 +3602,119 @@ python -m pytest -q tests/performance -m performance
 
 ## 14. 测试债务与改进清单
 
-| # | 债务 | 位置 | 影响 | 建议 |
-| --- | --- | --- | --- | --- |
-| T1 | 模块级 `mail_data`（已修复） | `tests/integration/usercenter/test_user_view.py` | 已改为 function-scope `mail_outbox` fixture | 保持每个测试独立 outbox |
-| T2 | 序列化过期断言被注释 | `tests/integration/security/test_core.py` | 过期路径无保护 | 用可控时间/短 max_age 补测 |
-| T3 | `test_count_query` 只断言非空 | `tests/unit/datastore/sqla/test_query.py` | 计数错误无法发现 | 断言具体数值，加一对多用例 |
-| T4 | 关联搜索未断言 count | `tests/integration/admin/sqla/test_search.py` | 分页总数可能错 | 加 `count` 断言 |
-| T5 | Inline AJAX 未触发缺陷 | `tests/integration/admin/sqla/test_inline_ajax.py` | C1 可能漏测 | 配置子模型 `ajax_refs` 并访问页面 |
-| T6 | `get_users`/`remove_user` 无测试 | `tests/integration/userstore/` | 接口不一致 | 补契约测试 |
-| T7 | CLI 无测试 | 无 | 命令回归无保护 | 新增 `test_commands.py` |
-| T8 | 无 E2E/性能基线 | 全局 | 跨模块流程与性能退化不可度量 | 按 Phase 3/4 落地；覆盖率基线已见 10.5 |
-| T9 | 测试名偏泛 | `test_base`、`test_from` 等 | 可读性差 | 改为行为描述 |
-| T10 | 注释/print 残留 | 多个测试 | 噪音 | 清理，保留必要说明 |
-| T11 | 临时目录 | `tests/tmp`、`tests/integration/tmp`、`tests/integration/data` | 可能污染仓库 | 确认用途，加入 `.gitignore` 或清理 |
-| T12 | 无 marker | 全局 | 无法快慢分离 | 注册并使用 |
-| T13 | 未验证并行/随机顺序 | 全局 | 隐藏顺序依赖 | 引入 `pytest-xdist`/`pytest-randomly` 前先做隔离审计 |
-| T14 | 仅 SQLite | 全局 | 生产数据库差异未覆盖 | 夜间跑 PostgreSQL，重点覆盖 C2/外键/大小写 |
-| T15 | 文档示例与仓库未对齐 | 第 4、8、9 节 | 复制示例无法直接运行 | Phase 0 落地 fixture/marker，示例标注状态 |
-| T16 | 统计数字易过期 | 1.1/1.2 | 文档失真 | 用 1.5 脚本定期重算 |
-| T17 | 邮件/信号载荷契约未文档化 | `security/token_action.py` | 测试断言字段靠猜 | 在 7.12 固定字段表并加契约测试 |
-| T18 | 覆盖率未设 CI 门槛 | 10.3/10.5 | 覆盖率回退无法自动阻断 | 以 10.5 基线设置阈值并接入 CI |
-| T19 | 上传/导出临时文件路径不统一 | forms/admin 测试 | 残留或互相覆盖 | 统一用 `tmp_path` |
+- **T1**
+  - 债务：模块级 `mail_data`（已修复）
+  - 位置：`tests/integration/usercenter/test_user_view.py`
+  - 影响：已改为 function-scope `mail_outbox` fixture
+  - 建议：保持每个测试独立 outbox
+
+- **T2**
+  - 债务：序列化过期断言被注释
+  - 位置：`tests/integration/security/test_core.py`
+  - 影响：过期路径无保护
+  - 建议：用可控时间/短 max_age 补测
+
+- **T3**
+  - 债务：`test_count_query` 只断言非空
+  - 位置：`tests/unit/datastore/sqla/test_query.py`
+  - 影响：计数错误无法发现
+  - 建议：断言具体数值，加一对多用例
+
+- **T4**
+  - 债务：关联搜索未断言 count
+  - 位置：`tests/integration/admin/sqla/test_search.py`
+  - 影响：分页总数可能错
+  - 建议：加 `count` 断言
+
+- **T5**
+  - 债务：Inline AJAX 未触发缺陷
+  - 位置：`tests/integration/admin/sqla/test_inline_ajax.py`
+  - 影响：CR-001 可能漏测
+  - 建议：配置子模型 `ajax_refs` 并访问页面
+
+- **T6**
+  - 债务：`get_users`/`remove_user` 无测试
+  - 位置：`tests/integration/userstore/`
+  - 影响：接口不一致
+  - 建议：补契约测试
+
+- **T7**
+  - 债务：CLI 无测试
+  - 位置：无
+  - 影响：命令回归无保护
+  - 建议：新增 `test_commands.py`
+
+- **T8**
+  - 债务：无 E2E/性能基线
+  - 位置：全局
+  - 影响：跨模块流程与性能退化不可度量
+  - 建议：按 Phase 3/4 落地；覆盖率基线已见 10.5
+
+- **T9**
+  - 债务：测试名偏泛
+  - 位置：`test_base`、`test_from` 等
+  - 影响：可读性差
+  - 建议：改为行为描述
+
+- **T10**
+  - 债务：注释/print 残留
+  - 位置：多个测试
+  - 影响：噪音
+  - 建议：清理，保留必要说明
+
+- **T11**
+  - 债务：临时目录
+  - 位置：`tests/tmp`、`tests/integration/tmp`、`tests/integration/data`
+  - 影响：可能污染仓库
+  - 建议：确认用途，加入 `.gitignore` 或清理
+
+- **T12**
+  - 债务：无 marker
+  - 位置：全局
+  - 影响：无法快慢分离
+  - 建议：注册并使用
+
+- **T13**
+  - 债务：未验证并行/随机顺序
+  - 位置：全局
+  - 影响：隐藏顺序依赖
+  - 建议：引入 `pytest-xdist`/`pytest-randomly` 前先做隔离审计
+
+- **T14**
+  - 债务：仅 SQLite
+  - 位置：全局
+  - 影响：生产数据库差异未覆盖
+  - 建议：夜间跑 PostgreSQL，重点覆盖 CR-002/外键/大小写
+
+- **T15**
+  - 债务：文档示例与仓库未对齐
+  - 位置：第 4、8、9 节
+  - 影响：复制示例无法直接运行
+  - 建议：Phase 0 落地 fixture/marker，示例标注状态
+
+- **T16**
+  - 债务：统计数字易过期
+  - 位置：1.1/1.2
+  - 影响：文档失真
+  - 建议：用 1.5 脚本定期重算
+
+- **T17**
+  - 债务：邮件/信号载荷契约未文档化
+  - 位置：`security/token_action.py`
+  - 影响：测试断言字段靠猜
+  - 建议：在 7.12 固定字段表并加契约测试
+
+- **T18**
+  - 债务：覆盖率未设 CI 门槛
+  - 位置：10.3/10.5
+  - 影响：覆盖率回退无法自动阻断
+  - 建议：以 10.5 基线设置阈值并接入 CI
+
+- **T19**
+  - 债务：上传/导出临时文件路径不统一
+  - 位置：forms/admin 测试
+  - 影响：残留或互相覆盖
+  - 建议：统一用 `tmp_path`
 
 ## 15. 测试编写规范与检查清单
 
@@ -1922,27 +3766,63 @@ def test_something(app, client):
 
 ### 15.4 反模式
 
-| 反模式 | 问题 | 替代 |
-| --- | --- | --- |
-| `assert rv.status_code == 200` 唯一断言 | 页面可能空白/错误 | 加内容/DB 断言 |
-| `xfail(raises=Exception)` | 掩盖未知异常 | 断言具体异常 |
-| 注释掉断言 | 失去保护 | 修复或删除测试 |
-| 模块级 list 收集状态 | 顺序/并行敏感 | fixture |
-| 测试中复制生产逻辑 | 双重维护 | 调用真实函数 |
-| 过度 mock | 测不到集成问题 | 只 mock 外部边界 |
-| 依赖当前时间 | 间歇失败 | 固定时间/相对时间 |
-| `catch_warnings()` + `simplefilter("error", DeprecationWarning)` | 掩盖对旧 API 的依赖，升级后仍可能失效 | 直接使用并断言新 API；弃用告警交给项目级 pytest 配置 |
-| `try: import ... except ImportError` 版本回退 | 兼容分支长期滞留，测试矩阵翻倍 | 只支持声明版本；无法支持时提升下限并记录变更 |
+- `assert rv.status_code == 200` 唯一断言
+  - 问题：页面可能空白/错误
+  - 替代：加内容/DB 断言
+
+- `xfail(raises=Exception)`
+  - 问题：掩盖未知异常
+  - 替代：断言具体异常
+
+- **注释掉断言**
+  - 问题：失去保护
+  - 替代：修复或删除测试
+
+- **模块级 list 收集状态**
+  - 问题：顺序/并行敏感
+  - 替代：fixture
+
+- **测试中复制生产逻辑**
+  - 问题：双重维护
+  - 替代：调用真实函数
+
+- **过度 mock**
+  - 问题：测不到集成问题
+  - 替代：只 mock 外部边界
+
+- **依赖当前时间**
+  - 问题：间歇失败
+  - 替代：固定时间/相对时间
+
+- `catch_warnings()` + `simplefilter("error", DeprecationWarning)`
+  - 问题：掩盖对旧 API 的依赖，升级后仍可能失效
+  - 替代：直接使用并断言新 API；弃用告警交给项目级 pytest 配置
+
+- `try: import ... except ImportError` 版本回退
+  - 问题：兼容分支长期滞留，测试矩阵翻倍
+  - 替代：只支持声明版本；无法支持时提升下限并记录变更
 
 ### 15.5 断言层次
 
-| 层次 | 何时必须 | 示例 |
-| --- | --- | --- |
-| HTTP | 所有请求 | `status_code`、`Location`、`Content-Type` |
-| 页面内容 | 渲染类测试 | 关键文本、表单错误、成功提示 |
-| 数据库 | 涉及写入/删除 | 重新查询最终状态 |
-| 副作用 | 涉及邮件/文件/信号 | outbox、文件存在、信号收到 |
-| 计数 | 列表/分页/搜索 | `count`、页数、总记录数 |
+- **HTTP**
+  - 何时必须：所有请求
+  - 示例：`status_code`、`Location`、`Content-Type`
+
+- **页面内容**
+  - 何时必须：渲染类测试
+  - 示例：关键文本、表单错误、成功提示
+
+- **数据库**
+  - 何时必须：涉及写入/删除
+  - 示例：重新查询最终状态
+
+- **副作用**
+  - 何时必须：涉及邮件/文件/信号
+  - 示例：outbox、文件存在、信号收到
+
+- **计数**
+  - 何时必须：列表/分页/搜索
+  - 示例：`count`、页数、总记录数
 
 只断言状态码是不够的；只断言页面文本也不够。写入类测试至少覆盖“页面 + DB”两层。
 
@@ -1961,7 +3841,7 @@ def test_something(app, client):
 
 本测试方案完成的定义：
 
-**基础设施**
+**基础设施**：
 
 - [ ] `tests/e2e/`、`tests/performance/` 目录建立
 - [ ] markers 注册，默认运行排除 performance/browser
@@ -1970,7 +3850,7 @@ def test_something(app, client):
 - [ ] `query_counter`、`seeded_db`、`tmp_upload_dir` 可用
 - [x] 覆盖率命令可重复执行，基线已记录
 
-**测试覆盖**
+**测试覆盖**：
 
 - [ ] 验收清单中已确认需修复的 P0/P1 缺陷均有回归测试；View/Admin 与安全问题分别参照 `spec.md` 第 10.16 节和 `security.md` 第 11 节
 - [ ] 关键路径 100% 覆盖（第 10 节清单）
@@ -1983,7 +3863,7 @@ def test_something(app, client):
 - [ ] TC-I18N-001～TC-I18N-006：语言、时区、复数、回退
 - [ ] PostgreSQL 夜间矩阵至少覆盖计数、外键、大小写搜索
 
-**质量门禁**
+**质量门禁**：
 
 - [ ] Python 3.11–3.13 全绿
 - [ ] `ruff`、`sphinx -W`、`djlint` 通过
@@ -1991,17 +3871,17 @@ def test_something(app, client):
 - [ ] CI 运行 unit/integration/coverage/docs/E2E
 - [ ] 夜间 performance/browser 任务（可选）
 
-**文档**
+**文档**：
 
 - [ ] 顶部“文档版本/最后更新/数据快照”与实际一致
 - [ ] 1.5 统计脚本可重复执行，数字与仓库一致
 - [ ] 关键契约的验收字段均有明确映射或待补说明，并已核对其测试设计与证据
 - [ ] 所有示例标注“现有/待补/目标”，不把规划写成现状
 - [ ] 新增 fixture/测试模式有示例
-- [ ] 目标对照表更新
+- [ ] 目标对照清单更新
 - [ ] 测试债务清单持续维护
 
-**v1.0 判定**
+**v1.0 判定**：
 
 满足以下条件后，本文可从当前工作稿状态升级为可执行规范：
 
@@ -2032,13 +3912,3 @@ def test_something(app, client):
 4. 更新 10.5 覆盖率基线、9.7 性能基线。
 5. 更新 14 测试债务、16 验收标准。
 6. 若章节结构变化，同步更新目录与 `spec.md` 的互链。
-
-### 17.3 相关文档
-
-| 文档 | 用途 |
-| --- | --- |
-| [`requirements.md`](./requirements.md) | 行为契约与验收依据 |
-| [`spec.md`](./spec.md) | 项目设计背景和 View/Admin 领域说明 |
-| `testing.md`（本文） | 测试驱动：策略、用例、执行、门禁 |
-| `flask-exts/AGENTS.md` | 开发规范、变更边界、命令 |
-| `flask-exts/docs/testing.rst` | 项目内英文测试说明（与本文互补） |
