@@ -21,9 +21,9 @@
 
 派生数据，由 `check_docs.py` 只读核验；判定标准、`passed` 的证明范围与免责见第 2.2 节。
 
-- **契约总数**：52 条（活跃 50 条）
-- **已批准且验证通过（approved + passed）**：34 条
-- **未取证（默认 unknown / unverified）**：16 条
+- **契约总数**：54 条（活跃 52 条）
+- **已批准且验证通过（approved + passed）**：35 条
+- **未取证（默认 unknown / unverified）**：17 条
 - **已停用（superseded / deprecated）**：2 条
 
 ## 0. 快速使用
@@ -155,6 +155,7 @@ REQ-<领域>-<序号>
 - **纳入基线**：文档基线 v0.1
 - **批准范围**：34 条 `verification=passed` 的契约；未取得执行证据的契约不予批准
 - **批准依据**：该日全量实跑（HEAD `445b03d`，Python 3.13.5，274 passed、0 跳过）；各契约的入口与结果记录在其 `verification` 字段，实跑登记见 `testing.md` 第 10.5 节
+- **单独批准**：2026-11-14，`REQ-AUTH-012`（JWT 绑定凭据状态与 TFA 完成状态）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，277 passed）；批准人 d.hua
 
 后续若出现单独批准或重新批准，应在该条目 `lifecycle` 的括号内注明日期与差异，并在本节追加一条。批准记录不得由 AI 代填。
 
@@ -426,6 +427,34 @@ REQ-<领域>-<序号>
 - **不变量**：按账号而非按 IP 计数；共享同一数据库的多进程/多实例结果一致；自动过期，不需要管理员解锁；锁定期内密码正确也拒绝；自定义 `UserStore` 必须声明并实现 `login_user_by_username_password`、`is_locked`、`record_login_failure`、`clear_login_failures`，缺失时无法实例化
 - **验收**：`testing.md` TC-AUTH-031~TC-AUTH-033；`tests/integration/userstore/test_sqla_userstore.py`、`tests/integration/usercenter/test_user_view.py::test_repeated_failed_logins_lock_the_account`、`test_failed_tfa_codes_lock_the_account`、`test_password_reset_clears_lockout`
 - **关联**：`security.md` 8.5/11（SEC-03）；`REQ-AUTH-009`
+
+### REQ-AUTH-012 JWT 绑定凭据状态与 TFA 完成状态
+
+- **lifecycle**：`approved`（2026-11-14 单独批准，范围仅本条）
+- **implementation**：`implemented`（2026-11-14 工作树：`jwt_encode_for_user` 写入 `pwd`/`amr`，`load_user_from_request` 校验；UserCenter 不新增 HTTP 签发端点）
+- **verification**：`passed`（2026-11-14 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-14 单独批准行）
+- **前置**：调用方已确认用户身份；如用户启用 TFA，调用方已确认第二因子完成
+- **输入**：`jwt_encode_for_user(user, amr=None, delta=None)`
+- **行为**：生成 `token_use="access"` 的 JWT，载荷含 `id`、`pwd`（当前密码哈希的带密钥指纹）、`amr`（至少 `pwd`；完成 TOTP 或恢复码后含 `otp`）；TFA 用户缺少 `otp` 时拒绝签发；`load_user_from_request` 恒定时间比对 `pwd`，并在 `tfa_enabled=True` 时要求 `amr` 含 `otp`
+- **输出/副作用**：返回签名后的 JWT 字符串；由使用方在自己的 API 登录流程决定如何响应
+- **错误**：TFA 用户未提供 `otp` 时抛 `ValueError`；载荷缺少或伪造 `pwd`、TFA 用户缺少 `otp` 时 Bearer 认证按匿名处理
+- **不变量**：不含 `pwd` 的旧 token 一律拒绝（不提供过渡兼容）；密码变更或重置后旧 token 失效；改邮箱不改变密码指纹
+- **验收**：`tests/integration/builtin_extensions/test_login.py::test_bearer_token_without_password_fingerprint_is_rejected`、`test_bearer_token_is_rejected_after_password_change`、`test_tfa_user_requires_otp_claim`；执行证据见 `testing.md` 第 10.5 节 2026-11-14 单独批准行
+- **关联**：`security.md` 9.1～9.3、SEC-02、SEC-08；`REQ-AUTH-005`
+
+### REQ-AUTH-013 JWT 算法、密钥与声明校验硬化
+
+- **lifecycle**：`in-review`（2026-11-14 提交评审，待维护者批准）
+- **implementation**：`implemented`（2026-11-14 工作树：算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写、`id`/`amr` 严格解析）
+- **verification**：`passed`（2026-11-14 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-14 JWT 硬化行）
+- **前置**：应用配置 JWT 功能
+- **输入**：`jwt_encode` / `jwt_decode` / `jwt_encode_for_user` 的载荷、密钥、算法、`JWT_LEEWAY` 与 `Authorization` 头
+- **行为**：签发与解码只接受 `HS256`/`HS384`/`HS512`；首次使用校验 `JWT_SECRET_KEY` 已设置、至少 32 字节且不同于 `SECRET_KEY`；编码写入 `iat`/`exp`/`token_use`，解码要求 `exp`/`token_use` 并按 `JWT_LEEWAY` 容忍时钟偏差；Bearer scheme 大小写不敏感；`id` 只接受整数或纯十进制字符串；`amr` 接受字符串或字符串可迭代对象，字符串视为单个方法
+- **输出/副作用**：合规令牌正常签发与解析；不合规配置或输入在首次使用时失败
+- **错误**：算法或密钥不合规抛 `RuntimeError`；`amr` 类型错误抛 `TypeError`；畸形头与解码失败抛 `InvalidAuthorizationError`；无效 `id` 或 `pwd` 不匹配按匿名处理
+- **不变量**：`none` 永不被接受；算法与密钥校验失败不签发令牌；`amr="otp"` 不会被拆成单个字符；`id=True` 与 `id=1.9` 不会被解析为用户 1
+- **验收**：`tests/integration/builtin_extensions/test_login.py::test_unsupported_jwt_algorithm_is_rejected`、`test_unsupported_configured_jwt_algorithm_is_rejected`、`test_jwt_requires_secret_key`、`test_jwt_rejects_short_secret_key`、`test_jwt_rejects_secret_key_shared_with_flask_secret`、`test_jwt_encode_records_issued_at`、`test_jwt_decode_honours_configured_leeway`、`test_jwt_encode_for_user_accepts_amr_string`、`test_jwt_encode_for_user_rejects_invalid_amr`、`test_bearer_token_rejects_non_integer_user_id`、`test_bearer_scheme_is_case_insensitive`；执行证据见 `testing.md` 第 10.5 节 2026-11-14 JWT 硬化行
+- **关联**：`security.md` 9.1～9.3、10.2；`REQ-AUTH-012`
 
 ## 6. 授权
 
@@ -894,3 +923,5 @@ REQ-<领域>-<序号>
 4. **测试基础设施与工程门禁**：
    - 建立 `tests/e2e/` HTTP 端到端旅程测试与 `tests/performance/` 查询基准。
    - 将 `check_docs.py`（含 `FLASK_EXTS_REPO` 模式）纳入 CI 持续门禁（见 `README.md` P0-4）。
+5. **JWT 硬化契约待批准**：
+   `REQ-AUTH-013` 已在 2026-11-14 工作树实现并有 301 passed 实跑证据，`lifecycle` 为 `in-review`；待维护者批准后按 `approved + passed` 计入。

@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核） |
+> | 最后更新 | 2026-11-14 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-14 工作树复跑 301 passed（HEAD 加未提交差异；JWT 硬化新增 24 个回归用例） |
 > | 适用仓库 | `flask-exts` |
 >
 > **文档状态说明**：本文的测试目录与数量以 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
@@ -83,11 +83,11 @@ uv run pytest -q tests/unit/forms/form/test_form.py
   - 说明：全部位于 `tests/unit/` 与 `tests/integration/`
 
 - **测试函数**
-  - 当前值：235 个
-  - 说明：以 `def test_...` 统计
+  - 当前值：251 个
+  - 说明：以 `def test_...` 统计（2026-11-14 工作树；HEAD `445b03d` 为 235 个）
 
 - **断言**
-  - 当前值：约 1059 处
+  - 当前值：约 1072 处
   - 说明：按 `\bassert\b` 全文匹配统计（复现脚本见第 1.5 节），不含 `pytest.raises`
 
 - **测试框架**
@@ -119,8 +119,8 @@ uv run pytest -q tests/unit/forms/form/test_form.py
   - 说明：未引入 `factory-boy` / `faker`
 
 - **最近完整测试运行**
-  - 当前值：274 passed
-  - 说明：2026-11-13 复跑；Python 3.13.5；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；0 跳过；10.02s；命令 `uv run pytest -q -p no:cacheprovider`
+  - 当前值：301 passed
+  - 说明：2026-11-14 复跑；Python 3.13.5；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异；0 跳过；11.18s；命令 `.venv/bin/python -m pytest -q`
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -136,7 +136,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.2 现有测试分布
 
-按 2026-11-13 的 HEAD `445b03d` 统计，各区域合计与第 1.1 节的 235 个测试函数一致。
+按 2026-11-14 工作树（HEAD `445b03d` 加未提交差异）统计，各区域合计与第 1.1 节的 251 个测试函数一致。
 
 - `integration/admin`
   - 测试函数数：57
@@ -179,9 +179,9 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖注册、排序、循环依赖、资源拼接
 
 - `integration/builtin_extensions`
-  - 测试函数数：8
+  - 测试函数数：24
   - 主要文件：`test_login.py`、`test_admin_views.py`
-  - 评价：覆盖 JWT、蓝图、默认视图
+  - 评价：覆盖 JWT 签发/校验（`pwd`、`amr`、算法白名单、密钥校验、`iat`/leeway、Bearer 大小写、`id`/`amr` 严格解析）、蓝图、默认视图
 
 - `integration/userstore`
   - 测试函数数：8
@@ -276,7 +276,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.5 数据快照与重新统计
 
-本文的 48 / 235 / 1059 已按 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 48 / 251 / 1072 已按 2026-11-14 工作树（HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交差异）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -1978,7 +1978,6 @@ class UserFactory(factory.Factory):
 - SEC-01：构造 `admin` 且 `is_active=False`，断言受保护操作被拒；旧快照预期该测试先失败。
 - SEC-02：启用 TFA 的用户使用 Bearer token 访问受保护资源时，验证不能绕过第二因子。
 - SEC-03：限流/锁定须先明确由应用或反向代理负责，再设计对应测试；可添加集成测试桩。
-- SEC-04：核实 `TFA_EXEMPT_ENDPOINTS` 是否实现，若实现则补测试，否则从配置文档移除并说明。
 - SEC-07：设计密钥轮换及 TOTP 数据迁移测试；快照中迁移实现待补。
 - SEC-12：配置安全 Cookie 后断言 `Set-Cookie` 的 `Secure`、`HttpOnly` 和 `SameSite`。
 - SEC-16：已覆盖——禁用 TFA 与重绑 authenticator 后 `recovery_codes` 被清空，旧码无法使用；重新生成后为全新哈希（`test_tfa`、`test_recovery`）。
@@ -3303,6 +3302,22 @@ show_missing = true
   - 命令：`uv run pytest -q -p no:cacheprovider`
   - 备注：274 passed、0 跳过；10.02s；Python 3.13.5；逐条判定契约 `verification` 所用证据
 
+- **2026-11-14 · 445b03d + 工作树**
+  - commit：`445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异（JWT `pwd`/`amr` 校验）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：277 passed、0 跳过；10.19s；Python 3.13.5；`REQ-AUTH-012` 单独批准所用证据
+
+- **2026-11-14 · 445b03d + 工作树（JWT 硬化）**
+  - commit：`445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异（算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写、`id`/`amr` 严格解析）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：301 passed、0 跳过；11.18s；Python 3.13.5；新增 24 个 JWT 回归用例；`ruff check` 通过
+
 规则：
 
 - 基线必须与 commit 绑定；代码变化后重新测量。
@@ -3526,7 +3541,7 @@ python -m pytest -q tests/performance -m performance
 
 - **集成测试**
   - 目标：30+
-  - 当前真实状态：100 个集成测试函数（57 + 8 + 22 + 8 + 5），已超额
+  - 当前真实状态：116 个集成测试函数（57 + 24 + 22 + 8 + 5），已超额
   - 本方案动作：不再追求数量，补关键缺口
 
 - **E2E 测试**

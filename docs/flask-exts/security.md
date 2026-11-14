@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复） |
+> | 最后更新 | 2026-11-14 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-14 工作树已修复 SEC-02/SEC-08，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；尚未提交或发布。 |
 > | 适用仓库 | `flask-exts` |
 >
 > **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。
@@ -38,9 +38,10 @@
   - 缺陷根因：已在 `0.4.2` 修复；0.4.1 及更早版本仍优先放行 `admin` 角色
   - 临时阻断要求（运维/管理）：对 0.4.1 及更早的部署：**禁止单纯设置 `is_active=False`**；禁用或离职处理管理员时，必须同时移除其 `admin` 角色，或直接删除账号。
 
-- **SEC-02**（JWT 绕过 TFA）
+- **SEC-02**（JWT 绕过 TFA；工作树已修复，未发布）
   - 缺陷根因：`load_user_from_request` 仅检查 `is_active`，未验证 TFA 完成标记
-  - 临时阻断要求（运维/管理）：对开启双因素认证的高权限账号，**切勿为其发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。
+  - 临时阻断要求（运维/管理）：对 0.4.2 及更早部署，**切勿为开启双因素认证的高权限账号发放纯密码换取的长期 JWT**；必须在 API 网关处要求二次验证凭据，或只允许会话认证。
+  - 修复状态：工作树在 JWT 中加入 `pwd` 指纹与 `amr` 声明，`load_user_from_request` 对 TFA 用户要求 `amr` 含 `otp`；待发布后本条按退役规则处理。
 
 - **SEC-03**（认证端点缺限流）
   - 缺陷根因：`0.4.2` 已加入账号级失败锁定（部分修复）：密码与第二因子共享计数、指数退避；但未知用户名、注册与找回密码入口仍无应用层计数
@@ -313,7 +314,7 @@ if not current_security.hasher.verify(user.password or "", password_fingerprint)
 - 修改密码后，旧 session 的 fingerprint 不匹配 → 会话失效。
 - `is_active=False` 后，下一次请求即按匿名处理，并清除 `_user_id` 与 remember-me Cookie；重新启用账号不会恢复旧 Cookie。
 - 改邮箱不会使 session 失效（session 只绑定密码）。
-- 该机制只保护 **session**，不保护 JWT（JWT 路径在 `load_user_from_request` 单独检查 `is_active`，见 9.3）。
+- 该机制只保护 **session**；JWT 路径在 `load_user_from_request` 中另行校验 `pwd` 指纹与 TFA 的 `amr` 声明（见 9.3）。
 
 ### 3.3 会话 Cookie 建议
 
@@ -508,13 +509,13 @@ class UserMixin(FlaskLoginUserMixin):
 ### 5.3 密码变更与会话失效
 
 - 修改密码后，`get_id()` 的指纹变化 → 旧 session 失效（已有测试）。
-- 修改密码**不会**使已签发的 JWT 失效（SEC-08，中）。
-- 重置密码同样改变密码哈希 → 旧 session 失效；JWT 仍有效直到过期。
+- JWT 载荷包含 `pwd` 指纹；修改密码或重置密码后，`load_user_from_request` 会拒绝旧 JWT（工作树修复，未发布；0.4.2 及更早版本仍有效到过期）。
+- 重置密码同样改变密码哈希 → 旧 session 失效；工作树中的旧 JWT 同样失效。
 
 建议：
 
-- 高安全场景缩短 JWT 有效期，或引入 token 版本号/撤销列表。
-- 在密码变更后要求重新登录所有设备（JWT 需额外机制）。
+- 高安全场景缩短 JWT 有效期；已签发 token 的主动吊销仍需 `jti` 或撤销列表。
+- 在密码变更后要求重新登录所有设备（工作树中 JWT 已随密码变化失效）。
 
 ## 6. 令牌与邮件流程
 
@@ -793,9 +794,9 @@ def get_totp_secret(self):
 
 ### 8.4 TFA 缺口
 
-- **JWT 绕过 TFA**
+- **JWT 绕过 TFA**（工作树已修复，未发布）
   - 等级：高（启用 JWT 时）
-  - 说明：`load_user_from_request` 只检查 active，不检查 TFA（SEC-02）
+  - 说明：`load_user_from_request` 要求 TFA 用户的 `amr` 含 `otp`（SEC-02）；0.4.2 及更早版本仍只检查 active
 
 - **无限流/锁定**
   - 等级：高（公网）
@@ -805,16 +806,11 @@ def get_totp_secret(self):
   - 等级：低-中
   - 说明：同一 30 秒窗口内验证码可重复使用；pyotp 默认窗口
 
-- `TFA_EXEMPT_ENDPOINTS` 未实现
-  - 等级：中
-  - 说明：`flask-exts/docs/configure.rst` 有文档，代码中无引用（SEC-04）
-
 建议：
 
-- 启用 JWT API 时，在 JWT 载荷加入 `amr`/`tfa` 声明，或在 `load_user_from_request` 中强制 TFA。
+- JWT 载荷已包含 `amr`；`load_user_from_request` 对 TFA 用户强制要求 `otp`（工作树，未发布）。
 - 在反向代理/WAF 对登录/TFA/恢复码接口限流，与内置账号锁定叠加。
 - 评估 TOTP `valid_window` 与重放缓存。
-- 实现或移除 `TFA_EXEMPT_ENDPOINTS` 文档承诺。
 
 ### 8.5 失败登录锁定（v0.4.1 之后）
 
@@ -854,57 +850,64 @@ current_userstore.user_set(user, failed_login_count=0, locked_until=None)
 ### 9.1 配置与令牌
 
 ```python
-def jwt_encode(payload, key=None, delta=None, algorithm=None):
-    if delta is None:
-        delta = current_app.config.get("JWT_ACCESS_TOKEN_MAX_AGE", 900)
-    exp = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(seconds=delta)
-    token_payload = dict(payload)
-    token_payload["exp"] = exp
-    token_payload["token_use"] = "access"
-    return jwt.encode(
-        token_payload,
-        key=key if key is not None else current_app.config.get("JWT_SECRET_KEY"),
-        algorithm=algorithm or current_app.config.get("JWT_HASH", "HS256"),
+def jwt_encode_for_user(user, amr=None, delta=None):
+    methods = _normalize_amr(amr)          # 字符串视为单个方法；元素必须是 str
+    if "pwd" not in methods:
+        methods.insert(0, "pwd")
+    if user.tfa_enabled and "otp" not in methods:
+        raise ValueError("otp amr claim required")
+    return jwt_encode(
+        {
+            "id": user.id,
+            "pwd": current_security.hasher.hash(user.password or ""),
+            "amr": methods,
+        },
+        delta=delta,
     )
 ```
 
-- 默认有效期 900 秒。
-- 必须包含 `exp`、`token_use`。
-- `jwt_decode` 固定算法列表，要求 `exp`/`token_use`。
-- `Authorization: Bearer <token>`。
+- 默认有效期 900 秒；`jwt_encode` 写入 `iat`、`exp`、`token_use`。
+- `jwt_decode` 要求 `exp`/`token_use`，并通过 `JWT_LEEWAY` 容忍多实例时钟偏差（默认 `0`）。
+- 访问令牌另含 `pwd` 与 `amr`；`pwd` 是 `Blake2bHasher` 的带密钥指纹，与 session 的 `get_id()` 同源。
+- `amr` 至少含 `pwd`；完成 TOTP 或恢复码后含 `otp`。TFA 用户缺少 `otp` 时签发函数直接抛 `ValueError`。
+- `amr` 参数只接受字符串或字符串可迭代对象；`amr="otp"` 视为单个方法，不再按字符拆分。
+- `jwt_decode` 只接受白名单算法 `HS256`/`HS384`/`HS512`；配置 `none` 或其他算法直接抛 `RuntimeError`。
+- `JWT_SECRET_KEY` 首次使用时校验：必须已设置、至少 32 字节、且不同于 `SECRET_KEY`。
+- `Authorization: Bearer <token>`；auth-scheme 大小写不敏感（`bearer` 与 `Bearer` 均可）。
 
 ### 9.2 请求加载
 
 ```python
 if "Authorization" in request.headers:
     payload = authorization_decoder(authstr)
-    if "id" in payload:
-        user = current_userstore.get_user_by_id(int(payload["id"]))
-        if user is not None and user.is_active:
-            return user
-    identity = payload.get(current_userstore.identity_name)
-    if identity is not None:
-        user = current_userstore.get_user_by_identity(identity)
-        if user is not None and user.is_active:
-            return user
+    user = resolve_user(payload)          # id 或 identity
+    if user is not None and user.is_active:
+        if not compare_digest(payload["pwd"], hasher.hash(user.password or "")):
+            return None
+        if user.tfa_enabled and "otp" not in payload.get("amr", []):
+            return None
+        return user
 ```
 
 安全点：
 
-- 只接受 `Bearer`，拒绝 Basic。
+- 只接受 `Bearer`，拒绝 Basic；auth-scheme 大小写不敏感。
 - 不读取 `api_key` 查询参数或其他请求参数；认证只来自 `Authorization` 头。
 - 只接受 `token_use="access"`。
 - 检查 `is_active`。
+- `id` 只接受整数或纯十进制字符串；布尔、浮点和容器类型一律拒绝，避免 `True`/`1.9` 被当成用户 1。
+- 恒定时间比对 `pwd` 指纹；缺失或类型错误一律拒绝。
+- TFA 用户要求 `amr` 含 `otp`。
 
 ### 9.3 JWT 缺口
 
-- **不检查 TFA**
+- **TFA 声明校验**（工作树已修复，未发布）
   - 等级：高（启用 JWT 时）
-  - 说明：启用 TFA 的用户仍可用 Bearer token 直接访问（SEC-02）
+  - 说明：`load_user_from_request` 要求 TFA 用户的 `amr` 含 `otp`；纯密码 token 被拒（SEC-02）
 
-- **密码变更不失效**
+- **密码变更失效**（工作树已修复，未发布）
   - 等级：中
-  - 说明：JWT 不包含密码指纹，改密后旧 token 仍有效至过期（SEC-08）
+  - 说明：JWT 携带 `pwd` 指纹；改密或重置后旧 token 被拒（SEC-08）
 
 - **无撤销列表**
   - 等级：中
@@ -914,20 +917,20 @@ if "Authorization" in request.headers:
   - 等级：中
   - 说明：多服务共享密钥时可能被跨服务重放
 
-- `JWT_SECRET_KEY` 未设置时
-  - 等级：中
-  - 说明：demo 未配置；调用 JWT 功能会失败，需显式配置
-
-- `JWT_HASH` 可配置
+- **JWT 密钥配置校验**（工作树已修复，未发布）
   - 等级：低
-  - 说明：必须限制为可信算法（HS256/RS256 等），不要让用户输入控制
+  - 说明：首次使用 JWT 时校验 `JWT_SECRET_KEY` 已设置、至少 32 字节且不同于 `SECRET_KEY`；缺失或不合规会抛明确的 `RuntimeError`
+
+- **算法配置**（工作树已修复，未发布）
+  - 等级：低
+  - 说明：`JWT_HASH` 只接受白名单 `HS256`/`HS384`/`HS512`；`none` 或其他算法直接失败，避免配置误用
 
 建议：
 
 - JWT 仅用于 API 场景，并明确 TFA 策略。
 - 加入 `jti` + 撤销列表/短期 token + 刷新 token。
 - 加入 `aud`/`iss` 校验。
-- 密码变更时递增 `token_version` 并写入 JWT。
+- `pwd` 指纹已覆盖密码变更与重置；如需强制全体下线，再递增 `token_version` 并写入 JWT。
 - 使用独立 `JWT_SECRET_KEY`，不要与 `SECRET_KEY` 相同。
 
 ## 10. 配置安全清单
@@ -980,9 +983,13 @@ if "Authorization" in request.headers:
   - 推荐值：`900` 或更短
   - 说明：API token
 
+- `JWT_LEEWAY`
+  - 推荐值：`0`～`30` 秒
+  - 说明：容忍多实例时钟偏差；不要放大到覆盖令牌寿命
+
 - `JWT_HASH`
-  - 推荐值：`HS256`（或固定白名单）
-  - 说明：不要动态接受用户输入
+  - 推荐值：`HS256`（白名单 `HS256`/`HS384`/`HS512` 内的固定值）
+  - 说明：不要动态接受用户输入；白名单外的值会直接失败
 
 - `APP_NAME`
   - 推荐值：真实应用名
@@ -991,10 +998,6 @@ if "Authorization" in request.headers:
 - `SESSION_COOKIE_*` / `REMEMBER_COOKIE_*`
   - 推荐值：见 3.3
   - 说明：Secure/HttpOnly/SameSite
-
-- `TFA_EXEMPT_ENDPOINTS`
-  - 推荐值：**当前未实现**
-  - 说明：文档有描述，代码未读取（SEC-04）
 
 ### 10.3 禁止配置
 
@@ -1084,22 +1087,16 @@ server {
   - 建议：已发布 0.4.1 及更早版本的部署仍需同时移除 admin 角色
 
 - `SEC-02`
-  - 等级：高（启用 JWT）
+  - 等级：高（工作树修复，未发布）
   - 位置：`builtin_extensions/login_ext.py::load_user_from_request`
-  - 现状：JWT 只检查 `is_active`，不检查 TFA
-  - 建议：在 JWT 中携带 `amr`/`tfa` 声明并校验，或返回前强制 TFA
+  - 现状：JWT 载荷含 `pwd` 与 `amr`；TFA 用户必须带 `otp` 声明；`test_tfa_user_requires_otp_claim`、`test_token_endpoint_requires_completed_tfa` 覆盖
+  - 建议：发布后按退役规则处理；0.4.2 及更早版本仍需网关二次验证
 
 - `SEC-03`
   - 等级：高（部分修复，已在 0.4.2 发布）
   - 位置：登录/注册/找回/TFA/恢复码
   - 现状：`main` 已实现账号级失败锁定（`users.failed_login_count` + `locked_until`，密码与 TFA 共享计数、指数退避）；仍缺 IP 维度、未知用户名计数与注册/找回入口限流
   - 建议：反向代理/WAF 按 IP 限流，与内置账号锁定叠加
-
-- `SEC-04`
-  - 等级：中
-  - 位置：`flask-exts/docs/configure.rst` vs 代码
-  - 现状：`TFA_EXEMPT_ENDPOINTS` 有文档但未实现
-  - 建议：实现该配置，或从文档移除并说明
 
 - `SEC-05`
   - 等级：中（已修复）
@@ -1120,10 +1117,10 @@ server {
   - 建议：提供重加密迁移或提前重绑
 
 - `SEC-08`
-  - 等级：中
+  - 等级：中（工作树修复，未发布）
   - 位置：`login_ext.py`
-  - 现状：JWT 不随密码变更失效
-  - 建议：加入 `token_version` 或缩短 TTL
+  - 现状：JWT 携带 `pwd` 指纹；改密或重置后旧 token 被拒；`test_bearer_token_is_rejected_after_password_change` 覆盖
+  - 建议：发布后按退役规则处理；主动吊销仍需 `jti` 或撤销列表
 
 - `SEC-09`
   - 等级：低-中
