@@ -22,8 +22,8 @@
 派生数据，由 `check_docs.py` 只读核验；判定标准、`passed` 的证明范围与免责见第 2.2 节。
 
 - **契约总数**：54 条（活跃 52 条）
-- **已批准且验证通过（approved + passed）**：35 条
-- **未取证（默认 unknown / unverified）**：17 条
+- **已批准且验证通过（approved + passed）**：36 条
+- **未取证（默认 unknown / unverified）**：16 条
 - **已停用（superseded / deprecated）**：2 条
 
 ## 0. 快速使用
@@ -156,6 +156,7 @@ REQ-<领域>-<序号>
 - **批准范围**：34 条 `verification=passed` 的契约；未取得执行证据的契约不予批准
 - **批准依据**：该日全量实跑（HEAD `445b03d`，Python 3.13.5，274 passed、0 跳过）；各契约的入口与结果记录在其 `verification` 字段，实跑登记见 `testing.md` 第 10.5 节
 - **单独批准**：2026-11-14，`REQ-AUTH-012`（JWT 绑定凭据状态与 TFA 完成状态）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，277 passed）；批准人 d.hua
+- **单独批准**：2026-11-14，`REQ-AUTH-013`（JWT 算法、密钥与声明校验硬化）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，301 passed），实现与测试提交为 `db1b35e`、`c8b45a8`；批准人 d.hua
 
 后续若出现单独批准或重新批准，应在该条目 `lifecycle` 的括号内注明日期与差异，并在本节追加一条。批准记录不得由 AI 代填。
 
@@ -444,9 +445,9 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-013 JWT 算法、密钥与声明校验硬化
 
-- **lifecycle**：`in-review`（2026-11-14 提交评审，待维护者批准）
-- **implementation**：`implemented`（2026-11-14 工作树：算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写、`id`/`amr` 严格解析）
-- **verification**：`passed`（2026-11-14 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-14 JWT 硬化行）
+- **lifecycle**：`approved`（2026-11-14 单独批准，范围仅本条）
+- **implementation**：`implemented`（2026-11-14 提交 `db1b35e`：算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写、`id`/`amr` 严格解析）
+- **verification**：`passed`（2026-11-14 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异，其后实现与测试提交为 `db1b35e`、`c8b45a8`；Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-14 JWT 硬化行）
 - **前置**：应用配置 JWT 功能
 - **输入**：`jwt_encode` / `jwt_decode` / `jwt_encode_for_user` 的载荷、密钥、算法、`JWT_LEEWAY` 与 `Authorization` 头
 - **行为**：签发与解码只接受 `HS256`/`HS384`/`HS512`；首次使用校验 `JWT_SECRET_KEY` 已设置、至少 32 字节且不同于 `SECRET_KEY`；编码写入 `iat`/`exp`/`token_use`，解码要求 `exp`/`token_use` 并按 `JWT_LEEWAY` 容忍时钟偏差；Bearer scheme 大小写不敏感；`id` 只接受整数或纯十进制字符串；`amr` 接受字符串或字符串可迭代对象，字符串视为单个方法
@@ -923,5 +924,3 @@ REQ-<领域>-<序号>
 4. **测试基础设施与工程门禁**：
    - 建立 `tests/e2e/` HTTP 端到端旅程测试与 `tests/performance/` 查询基准。
    - 将 `check_docs.py`（含 `FLASK_EXTS_REPO` 模式）纳入 CI 持续门禁（见 `README.md` P0-4）。
-5. **JWT 硬化契约待批准**：
-   `REQ-AUTH-013` 已在 2026-11-14 工作树实现并有 301 passed 实跑证据，`lifecycle` 为 `in-review`；待维护者批准后按 `approved + passed` 计入。
