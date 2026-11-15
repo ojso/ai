@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-14 |
-> | 数据快照 | 2026-11-13（依赖矩阵与测试结果；发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`）。2026-11-14 工作树包含 JWT 安全与兼容性变更，尚未提交或发布，见第 3.2 节。 |
+> | 数据快照 | 2026-11-13（依赖矩阵与测试结果；发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`）。2026-11-15 工作树包含 JWT 与浏览器安全变更，尚未提交或发布，见第 3.2 节。 |
 > | 适用范围 | 本目录文档与工程发布评审 |
 >
 > 本文件是发布前门禁、兼容性策略、回滚条件与发布说明模板的唯一事实源；其他文档只引用，不复制。
@@ -140,6 +140,12 @@
   - 迁移：签发端改用整数 `id` 与 `amr=["otp"]`
   - 回滚：回退 `login_ext.py` 的解析逻辑
 
+- **默认安全 Cookie 与响应头（SEC-12）**
+  - 影响对象：依赖跨站 Cookie、iframe 嵌入或严格自定义响应头的应用
+  - 变更：`SAMESITE` 未配置时设为 `Lax`；默认下发 `X-Frame-Options: SAMEORIGIN`、最小 CSP 等安全头；HTTPS 请求下发 HSTS；启动阶段校验响应头配置类型
+  - 迁移：需要跨站或嵌入时通过 `SECURITY_HEADERS` 覆盖响应头，把 `SESSION_COOKIE_SAMESITE` 设为字符串 `"None"` 并开启 Secure；需要保留 Flask 原 Cookie 行为时设置 `SECURITY_COOKIE_DEFAULTS_ENABLED=False`；生产同时开启 `SESSION_COOKIE_SECURE`、`REMEMBER_COOKIE_SECURE` 与 `SECURITY_REQUIRE_HTTPS`；反向代理安装 `ProxyFix`
+  - 回滚：设置 `SECURITY_HEADERS_ENABLED=False` 和 `SECURITY_COOKIE_DEFAULTS_ENABLED=False`；不建议回退 Secure Cookie 策略
+
 ## 4. 发布前检查清单
 
 - [ ] 文档职责变化是否已同步更新 `README.md`
@@ -154,6 +160,7 @@
 - [ ] 关键回滚方式是否已记录
 - [ ] JWT 变更是否按第 3.2 节完成升级通知：旧 token 失效、算法白名单、密钥校验与 `id`/`amr` 解析收紧
 - [ ] 是否已确认 `JWT_SECRET_KEY` 独立且至少 32 字节，`JWT_HASH` 在 HMAC 白名单内
+- [ ] 是否已确认生产 Cookie 开启 `Secure`、`SECURITY_REQUIRE_HTTPS=True`，并评估默认安全响应头对 iframe/CSP 的影响
 - [ ] 受影响契约的 `lifecycle`、`implementation`、`verification`，以及测试入口、实际执行结果和代码基线是否可追溯
 - [ ] 已确认缺口及未排除的历史风险是否已评估并按严重度处理；风险接受不等于契约已验证
 - [ ] 未执行或失败的检查是否列明原因、影响与责任人，并按严重度决定阻塞或书面风险接受

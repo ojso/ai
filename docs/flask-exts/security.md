@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-14 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-14 工作树已修复 SEC-02/SEC-08，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；尚未提交或发布。 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-15 工作树已修复 SEC-02/SEC-08/SEC-12，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；SEC-12 补充 Cookie 默认值开关、显式 `SameSite=None` 与 `ProxyFix` 场景；尚未提交或发布。 |
 > | 适用仓库 | `flask-exts` |
 >
 > **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。
@@ -318,7 +318,7 @@ if not current_security.hasher.verify(user.password or "", password_fingerprint)
 
 ### 3.3 会话 Cookie 建议
 
-库本身不强制设置 Cookie 安全属性。生产至少显式配置：
+库在初始化 `SecurityExtension` 时设置安全默认值：`SESSION_COOKIE_HTTPONLY=True`、`SESSION_COOKIE_SAMESITE="Lax"`、`REMEMBER_COOKIE_HTTPONLY=True`、`REMEMBER_COOKIE_SAMESITE="Lax"`。库不自动强制 `*_COOKIE_SECURE`，生产必须显式开启：
 
 ```python
 from datetime import timedelta
@@ -331,14 +331,17 @@ app.config.update(
     REMEMBER_COOKIE_HTTPONLY=True,
     REMEMBER_COOKIE_SAMESITE="Lax",
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    SECURITY_REQUIRE_HTTPS=True,
 )
 ```
 
 注意：
 
-- `SameSite=None` 必须配合 `Secure=True`，且仅在确实需要跨站 Cookie 时使用。
-- 不要依赖 Flask 默认值；不同版本/部署可能不同。
-- 反向代理要正确传递 `X-Forwarded-Proto`，否则 `Secure` Cookie 可能不生效。
+- `SECURITY_REQUIRE_HTTPS=True` 会在启动时校验两个 `*_COOKIE_SECURE`；未开启直接抛 `RuntimeError`。
+- 默认不强制 `Secure` 是为了让本地 HTTP 开发和测试继续可用；生产遗漏该配置仍会让会话经明文传输。
+- Flask 的 `None` 同时表示“未配置”和“不输出 SameSite”，因此库把 `None` 视为未配置。确需跨站 Cookie 时写字符串 `"None"` 并配合 `Secure=True`；它会输出 `SameSite=None`。
+- 需要完全保留 Flask 原 Cookie 行为时设置 `SECURITY_COOKIE_DEFAULTS_ENABLED=False`，库不再改任何 Cookie 配置。
+- 反向代理要正确传递 `X-Forwarded-Proto` 并在应用上安装 `werkzeug.middleware.proxy_fix.ProxyFix`，否则 `Secure` Cookie 与 HSTS 判断可能不生效。
 
 ### 3.4 登出与 TFA 残留
 
@@ -687,14 +690,23 @@ csrf_token = s.dumps(session[csrf_field_name])
 
 ### 7.4 Cookie 与安全响应头
 
-库不设置安全响应头；生产应在反向代理/应用层补充：
+库在初始化 `SecurityExtension` 时默认下发以下响应头，应用可通过 `SECURITY_HEADERS` 覆盖，或用 `SECURITY_HEADERS_ENABLED=False` 关闭：
 
-- `Strict-Transport-Security`：`max-age=31536000; includeSubDomains`（确认全站 HTTPS 后）
-- `Content-Security-Policy`：按实际资源收紧；至少限制 `frame-ancestors`
-- `X-Frame-Options`：`DENY` 或 `SAMEORIGIN`
 - `X-Content-Type-Options`：`nosniff`
-- `Referrer-Policy`：`no-referrer` 或 `strict-origin-when-cross-origin`
-- `Permissions-Policy`：按需关闭不需要的浏览器能力
+- `X-Frame-Options`：`SAMEORIGIN`
+- `Referrer-Policy`：`strict-origin-when-cross-origin`
+- `Permissions-Policy`：`geolocation=(), microphone=(), camera=()`
+- `Content-Security-Policy`：`frame-ancestors 'self'`
+
+HTTPS 请求额外下发：
+
+- `Strict-Transport-Security`：`max-age=31536000; includeSubDomains`（确认全站 HTTPS 后；可用 `SECURITY_HSTS_ENABLED=False` 关闭，或用 `SECURITY_HSTS` 改值）
+
+注意：
+
+- HSTS 依赖 `request.is_secure`。TLS 在反向代理终止时，必须在应用安装 `werkzeug.middleware.proxy_fix.ProxyFix` 并只信任已知代理，否则请求被视为 HTTP，HSTS 静默不下发。
+- `SECURITY_HEADERS` 必须是 mapping，键为非空字符串，值为字符串或 `None`；`SECURITY_HSTS` 必须是字符串或 `None`。类型错误在启动时抛 `RuntimeError`，不会留到每个请求。
+- 应用仍应按实际资源收紧 `script-src`/`style-src` 等 CSP 指令；默认策略只限制页面被嵌入，不限制脚本与样式。
 
 ### 7.5 开放重定向防护
 
@@ -995,9 +1007,29 @@ if "Authorization" in request.headers:
   - 推荐值：真实应用名
   - 说明：TOTP issuer
 
+- `SECURITY_HEADERS_ENABLED`
+  - 推荐值：`True`
+  - 说明：关闭后不再下发默认安全响应头
+
+- `SECURITY_HEADERS`
+  - 推荐值：按应用覆盖；至少保留 `Content-Security-Policy: frame-ancestors 'self'`
+  - 说明：与默认头合并；单项设为 `None` 可移除
+
+- `SECURITY_HSTS_ENABLED` / `SECURITY_HSTS`
+  - 推荐值：`True` / `max-age=31536000; includeSubDomains`
+  - 说明：仅 HTTPS 请求下发；确认全站 HTTPS 后再启用
+
+- `SECURITY_REQUIRE_HTTPS`
+  - 推荐值：生产 `True`，本地开发/测试 `False`
+  - 说明：为 `True` 时要求两个 `*_COOKIE_SECURE` 均为 `True`，否则启动失败
+
+- `SECURITY_COOKIE_DEFAULTS_ENABLED`
+  - 推荐值：`True`
+  - 说明：设为 `False` 时保留 Flask 原 Cookie 配置，不再套用库的 HttpOnly/SameSite 默认值
+
 - `SESSION_COOKIE_*` / `REMEMBER_COOKIE_*`
   - 推荐值：见 3.3
-  - 说明：Secure/HttpOnly/SameSite
+  - 说明：Secure/HttpOnly/SameSite；库默认 HttpOnly 与 SameSite=Lax，不默认 Secure；跨站需写字符串 `"None"`
 
 ### 10.3 禁止配置
 
@@ -1141,10 +1173,10 @@ server {
   - 建议：接入结构化日志/审计系统
 
 - `SEC-12`
-  - 等级：中
-  - 位置：部署
-  - 现状：未默认设置安全 Cookie/响应头
-  - 建议：按 3.3/7.4 显式配置
+  - 等级：中（工作树修复，未发布）
+  - 位置：部署 / `SecurityExtension`
+  - 现状：`SecurityExtension` 默认设置 HttpOnly 与 SameSite=Lax，并下发低风险安全响应头；`SECURITY_REQUIRE_HTTPS` 可在启动时强制 Secure Cookie；Cookie 默认值可用 `SECURITY_COOKIE_DEFAULTS_ENABLED=False` 关闭，响应头与 HSTS 配置在启动阶段做类型校验
+  - 建议：生产显式开启 `SESSION_COOKIE_SECURE`/`REMEMBER_COOKIE_SECURE` 与 `SECURITY_REQUIRE_HTTPS`；反向代理安装 `ProxyFix`；发布后按退役规则处理
 
 - `SEC-13`
   - 等级：低（已在 0.4.2 修复）

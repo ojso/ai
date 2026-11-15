@@ -21,8 +21,8 @@
 
 派生数据，由 `check_docs.py` 只读核验；判定标准、`passed` 的证明范围与免责见第 2.2 节。
 
-- **契约总数**：54 条（活跃 52 条）
-- **已批准且验证通过（approved + passed）**：36 条
+- **契约总数**：55 条（活跃 53 条）
+- **已批准且验证通过（approved + passed）**：37 条
 - **未取证（默认 unknown / unverified）**：16 条
 - **已停用（superseded / deprecated）**：2 条
 
@@ -157,6 +157,7 @@ REQ-<领域>-<序号>
 - **批准依据**：该日全量实跑（HEAD `445b03d`，Python 3.13.5，274 passed、0 跳过）；各契约的入口与结果记录在其 `verification` 字段，实跑登记见 `testing.md` 第 10.5 节
 - **单独批准**：2026-11-14，`REQ-AUTH-012`（JWT 绑定凭据状态与 TFA 完成状态）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，277 passed）；批准人 d.hua
 - **单独批准**：2026-11-14，`REQ-AUTH-013`（JWT 算法、密钥与声明校验硬化）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，301 passed），实现与测试提交为 `db1b35e`、`c8b45a8`；批准人 d.hua
+- **单独批准**：2026-11-14，`REQ-SEC-001`（安全 Cookie 与响应头默认值）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，311 passed）；批准人 d.hua
 
 后续若出现单独批准或重新批准，应在该条目 `lifecycle` 的括号内注明日期与差异，并在本节追加一条。批准记录不得由 AI 代填。
 
@@ -705,7 +706,7 @@ REQ-<领域>-<序号>
 - **验收**：`testing.md` TC-SEC-009/TC-SEC-010；`test_core.py`（改邮箱令牌在密码变更后失效待补）
 - **关联**：`security.md` 6.2
 
-## 10. CSRF
+## 10. CSRF 与浏览器安全
 
 ### REQ-CSRF-001 令牌按会话生成并使用派生密钥
 
@@ -748,6 +749,20 @@ REQ-<领域>-<序号>
 - **不变量**：生产默认不能静默关闭
 - **验收**：`testing.md` TC-FORM-009；实测入口为 `tests/unit/forms/form/test_form.py::test_nocsrf_form`，断言 `CSRF_ENABLED=False` 时表单不包含 `csrf_token` 字段且校验通过。
 - **关联**：`security.md` 7.2
+
+### REQ-SEC-001 安全 Cookie 与响应头默认值
+
+- **lifecycle**：`approved`（2026-11-14 单独批准，范围仅本条）
+- **implementation**：`implemented`（2026-11-14 工作树：`SecurityExtension` 应用 Cookie 默认值、响应头与 HTTPS 校验；2026-11-15 补充默认值开关、配置类型校验与代理场景测试）
+- **verification**：`passed`（2026-11-15 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-15 SEC-12 行）
+- **前置**：应用初始化 `SecurityExtension`
+- **输入**：`SECURITY_HEADERS_ENABLED`、`SECURITY_HEADERS`、`SECURITY_HSTS_ENABLED`、`SECURITY_HSTS`、`SECURITY_REQUIRE_HTTPS`、`SECURITY_COOKIE_DEFAULTS_ENABLED`；HTTP/HTTPS 请求（含受信反向代理提供的 `X-Forwarded-Proto`）；`SESSION_COOKIE_*` 与 `REMEMBER_COOKIE_*` 配置
+- **行为**：默认下发 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 与最小 `Content-Security-Policy`；`SECURITY_HEADERS` 覆盖或按 `None` 移除单项；HTTPS 请求按配置追加 `Strict-Transport-Security`；`SAMESITE` 未配置时设为 `Lax`，`SECURITY_COOKIE_DEFAULTS_ENABLED=False` 时保留 Flask 原值，字符串 `"None"` 用于显式跨站 Cookie；`SECURITY_REQUIRE_HTTPS=True` 时要求两个 `*_COOKIE_SECURE` 均为 `True`；启动阶段校验 `SECURITY_HEADERS` 与 `SECURITY_HSTS` 的类型
+- **输出/副作用**：响应头出现在所有响应；HTTPS 下 Cookie 可带 `Secure`；启动阶段执行配置校验
+- **错误**：`SECURITY_REQUIRE_HTTPS=True` 而 Secure Cookie 未开启时抛 `RuntimeError`；`SECURITY_HEADERS` 不是 mapping、键不是非空字符串、值不是字符串或 `None`，或 `SECURITY_HSTS` 不是字符串或 `None` 时抛 `RuntimeError`
+- **不变量**：库不自动强制 `*_COOKIE_SECURE`，HTTP 开发与测试仍可使用；HSTS 只对 HTTPS 请求下发，反向代理需安装 `ProxyFix`；单个响应头可被应用覆盖或移除；Cookie 默认值可整体关闭
+- **验收**：`tests/integration/security/test_security_headers.py::test_security_headers_are_added_to_http_responses`、`test_hsts_is_only_added_over_https`、`test_security_headers_can_be_disabled`、`test_security_headers_can_be_overridden_or_removed`、`test_hsts_can_be_disabled`、`test_session_cookie_emits_secure_attributes_when_configured`、`test_session_cookie_stays_usable_over_http`、`test_secure_cookie_defaults_are_applied`、`test_require_https_rejects_insecure_cookies`、`test_require_https_accepts_secure_cookies`、`test_cookie_defaults_can_be_disabled`、`test_explicit_samesite_none_is_emitted`、`test_hsts_is_added_behind_a_trusted_proxy`、`test_extension_initialization_accepts_valid_config`、`test_extension_rejects_invalid_security_config`；执行证据见 `testing.md` 第 10.5 节 2026-11-15 SEC-12 行
+- **关联**：`security.md` 3.3、7.4、10.2、SEC-12
 
 ## 11. Admin / View
 
