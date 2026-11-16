@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-15 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-15 工作树复跑 319 passed（HEAD 加未提交差异；JWT 硬化新增 24 个回归用例，SEC-12 新增 18 个用例） |
+> | 最后更新 | 2026-11-16 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 复跑 330 passed（新增边界、JWT `iat`、UTC 时间戳、TOTP flush 与默认视图回归用例） |
 > | 适用仓库 | `flask-exts` |
 >
 > **文档状态说明**：本文的测试目录与数量以 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
@@ -79,15 +79,15 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 ### 1.1 当前规模
 
 - **测试文件**
-  - 当前值：49 个 `test_*.py`
+  - 当前值：50 个 `test_*.py`
   - 说明：全部位于 `tests/unit/` 与 `tests/integration/`
 
 - **测试函数**
-  - 当前值：267 个
-  - 说明：以 `def test_...` 统计（2026-11-15 工作树；HEAD `445b03d` 为 235 个）
+  - 当前值：279 个
+  - 说明：以 `def test_...` 统计（2026-11-16 提交 `1349295`；HEAD `445b03d` 为 235 个）
 
 - **断言**
-  - 当前值：约 1095 处
+  - 当前值：约 1112 处
   - 说明：按 `\bassert\b` 全文匹配统计（复现脚本见第 1.5 节），不含 `pytest.raises`
 
 - **测试框架**
@@ -119,8 +119,8 @@ uv run pytest -q tests/unit/forms/form/test_form.py
   - 说明：未引入 `factory-boy` / `faker`
 
 - **最近完整测试运行**
-  - 当前值：319 passed
-  - 说明：2026-11-15 复跑；Python 3.13.5；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异；0 跳过；11.31s；命令 `.venv/bin/python -m pytest -q`
+  - 当前值：330 passed
+  - 说明：2026-11-16 复跑；Python 3.13.5；提交 `134929564791b2d5bc843685650ee8ccd13d1bc6`；0 跳过；31.79s；命令 `.venv/bin/python -m pytest -q`；`ruff check` 与 `ruff format --check` 通过
 
 `pyproject.toml` 当前 pytest 配置：
 
@@ -136,17 +136,17 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.2 现有测试分布
 
-按 2026-11-15 工作树（HEAD `445b03d` 加未提交差异）统计，各区域合计与第 1.1 节的 267 个测试函数一致。
+按 2026-11-16 提交 `1349295` 统计，各区域合计与第 1.1 节的 279 个测试函数一致。
 
 - `integration/admin`
-  - 测试函数数：57
+  - 测试函数数：58
   - 主要文件：完整入口见 1.2.1
-  - 评价：历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键、inactive admin、can_edit 边界；现状待核实
+  - 评价：历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键、inactive admin、can_edit 边界；本轮补充负 offset 场景
 
 - `unit/forms`
-  - 测试函数数：35
-  - 主要文件：`test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py`
-  - 评价：覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；边界与错误路径仍可补
+  - 测试函数数：38
+  - 主要文件：`test_json.py`、`test_datetime.py`、`test_filefield.py`、`test_uploadfile.py`、`test_select.py`、`test_wtforms.py`、`tests/unit/forms/form/test_form.py`、`tests/unit/forms/validators/test_file.py`
+  - 评价：覆盖字段、文件、选择字段、CSRF 生成/校验、派生密钥和关闭配置；本轮补充 `FileSize` 基于 `Content-Length`/seek 且不读取整份文件的用例；边界与错误路径仍可补
 
 - `unit/extension_core`
   - 测试函数数：32
@@ -154,9 +154,9 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖依赖排序、循环依赖、幂等、关闭、异常隔离、内置扩展装配
 
 - `unit/admin`
-  - 测试函数数：23
+  - 测试函数数：26
   - 主要文件：`test_mockview.py`、`test_pagination.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py`
-  - 评价：覆盖视图元数据、格式化、分页 URL 编码，偏“配置读取”
+  - 评价：覆盖视图元数据、格式化、分页 URL 编码、负页码夹取、页码链接、默认视图选择与布尔格式化转义，偏“配置读取”
 
 - `integration/usercenter`
   - 测试函数数：22
@@ -179,14 +179,14 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖注册、排序、循环依赖、资源拼接
 
 - `integration/builtin_extensions`
-  - 测试函数数：24
+  - 测试函数数：25
   - 主要文件：`test_login.py`、`test_admin_views.py`
-  - 评价：覆盖 JWT 签发/校验（`pwd`、`amr`、算法白名单、密钥校验、`iat`/leeway、Bearer 大小写、`id`/`amr` 严格解析）、蓝图、默认视图
+  - 评价：覆盖 JWT 签发/校验（`pwd`、`amr`、算法白名单、密钥校验、`iat` 必填/leeway、Bearer 大小写、`id`/`amr` 严格解析）、蓝图、默认视图
 
 - `integration/userstore`
-  - 测试函数数：8
+  - 测试函数数：10
   - 主要文件：`test_sqla_userstore.py`
-  - 评价：覆盖模型注册、基础 CRUD、角色与账号锁定（失败计数、成功登录清零、锁定过期、退避上限、非法策略）；`get_users`/`remove_user` 未覆盖
+  - 评价：覆盖模型注册、基础 CRUD、角色与账号锁定（失败计数、成功登录清零、锁定过期、退避上限、非法策略）、时间戳 aware UTC、TOTP secret 只 flush 不提交；`get_users`/`remove_user` 未覆盖
 
 - `unit/builtin_extensions`
   - 测试函数数：8
@@ -194,9 +194,9 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖 Babel、扩展注册、Jinja 全局
 
 - `integration/security`
-  - 测试函数数：21
+  - 测试函数数：23
   - 主要文件：`tests/integration/security/test_core.py`、`test_security_headers.py`
-  - 评价：覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效，以及安全 Cookie/响应头默认值、HTTPS 校验、默认值开关与反向代理下的 HSTS
+  - 评价：覆盖密钥派生、哈希、序列化、邮箱验证、重置密码、密码变更使 session 失效、`SECRET_KEY` 初始化校验、未知 serializer 保守默认值，以及安全 Cookie/响应头默认值、HTTPS 校验、默认值开关与反向代理下的 HSTS
 
 - `unit/emailer`
   - 测试函数数：4
@@ -276,7 +276,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.5 数据快照与重新统计
 
-本文的 49 / 267 / 1095 已按 2026-11-15 工作树（HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交差异）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 50 / 279 / 1112 已按 2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -3333,6 +3333,14 @@ show_missing = true
   - 函数覆盖：待测
   - 命令：`.venv/bin/python -m pytest -q`
   - 备注：319 passed、0 跳过；11.31s；Python 3.13.5；`ruff check` 通过；SEC-12 用例增至 18 个
+
+- **2026-11-16 · 1349295（代码审查修复）**
+  - commit：`134929564791b2d5bc843685650ee8ccd13d1bc6`（`FileSize` 不读取整份文件、负 `page`/`offset` 夹取、页码链接修复、默认视图选择、布尔格式化转义、JWT 强制 `iat`、CSRF token 改用 `secrets`、TOTP flush 加服务层提交、未知 serializer 30 分钟默认值、用户时间戳 aware UTC）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：330 passed、0 跳过；31.79s；Python 3.13.5；`ruff check` 与 `ruff format --check` 通过
 
 规则：
 

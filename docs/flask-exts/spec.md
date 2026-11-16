@@ -4,8 +4,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 CR-002 计数语义、CR-005/CR-006、CR-007、SEC-19、CR-012、CR-011、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定） |
+> | 最后更新 | 2026-11-16 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 CR-002 计数语义、CR-005/CR-006、CR-007、SEC-19、CR-012、CR-011、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定）。2026-11-16 提交 `1349295` 补充负页码夹取、列表页码链接、AJAX 负 offset、默认视图选择、导出原样输出与用户时间戳 UTC 说明。 |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
 
 ## 1. 项目定位
@@ -381,6 +381,8 @@ def settings(self): ...
 #### 10.3.3 ViewMeta 与访问控制
 
 `ViewMeta` 在类创建时扫描带 `_urls` 的方法，并逐个用访问控制包装（`_wrap_view_func_with_access`）。
+
+当多个方法暴露 `/` 或 `/index/` 时，`_default_view` 取扫描顺序中的**第一个**符合条件的方法，而不是最后一个；这保证默认入口稳定且可预测。
 
 包装顺序：
 
@@ -941,6 +943,7 @@ def format(model):
 - 关联模型的 Admin 视图最好已注册，便于前端跳转/权限一致。
 - `ajax_refs` 与 Inline 同时使用时注意 CR-001。
 - AJAX 更新需要 CSRF。
+- `/ajax/lookup/` 的 `offset` 为负时夹到 0，`limit` 限制在 1～100；后端 loader 也会再次防御负 offset。
 
 ### 10.11 导出
 
@@ -967,6 +970,7 @@ class PostView(SqlaModelView):
 - 不支持的格式会 flash 错误并重定向回列表。
 - 导出格式化器不支持宏（`inner` 名称会抛 `NotImplementedError`）。
 - 文件名经过 `secure_filename`。
+- 导出值按原样写出，**不做电子表格公式注入中和**。以 `=`、`+`、`-`、`@` 等开头的字符串不会自动加前缀；这是当前有意保留的行为，除非导出契约变更，否则不要重新引入中和逻辑。
 
 ### 10.12 分页与列表参数
 
@@ -983,8 +987,9 @@ class PostView(SqlaModelView):
 #### 10.12.2 解析
 
 ```python
+page = max(0, request.args.get("page", 0, type=int) or 0)
 ViewArgs(
-    page=request.args.get("page", 0, type=int),
+    page=page,
     page_size=request.args.get("page_size", 0, type=int),
     sort=request.args.get("sort", None, type=int),
     sort_desc=request.args.get("desc", None, type=int),
@@ -995,6 +1000,8 @@ ViewArgs(
 ```
 
 `get_safe_page_size`：仅当 `can_set_page_size` 为真且请求值在 `page_size_options` 白名单内时采用，否则回退到 `page_size`。
+
+`get_list_url` 在 `page > 0` 时把零基页码写回查询串；第 0 页省略 `page`。因此第 1 页链接为 `page=1`，第 2 页为 `page=2`，不会出现偏一或丢失第二页链接。
 
 #### 10.12.3 已知问题 CR-005/CR-006（已修复）
 
@@ -1556,6 +1563,7 @@ manager.init_app(app)  # 自动按依赖图完成 init_app 与 post_init
 - 查询和过滤必须在数据层决定，不允许 View 层直接手写数据库访问逻辑。
 - 相关字段的排序、过滤和分页必须由统一的查询层处理。
 - 直接使用裸 SQL 只能作为受控例外，不应成为主路径。
+- 用户存储模型的时间列（`User` 的 `created_at`、`updated_at`、`expired_at`、`locked_until`、`email_verified_at`、`phone_verified_at`，以及 `Role`/`UserProfile` 的 `created_at`、`updated_at`）统一按 UTC 计算和存储；无时区数据库保存 UTC wall time，读取时还原为 aware UTC。历史数据若为本地 naive 时间，升级后会被按 UTC 解释，需按原部署时区做一次迁移。
 
 > **分层约束与反模式说明**：第 10.8.3 节展示了早期实现中 View 穿透访问 `self._backend.session` 的历史写法；按本节规范，这是应被收敛的反模式。View 层应调用 Model 或 DataBackend 导出的命名作用域/查询工厂，而不应直接持有并执行裸 session 语句。
 

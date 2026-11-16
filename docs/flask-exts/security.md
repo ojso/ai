@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-14 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-15 工作树已修复 SEC-02/SEC-08/SEC-12，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；SEC-12 补充 Cookie 默认值开关、显式 `SameSite=None` 与 `ProxyFix` 场景；尚未提交或发布。 |
+> | 最后更新 | 2026-11-16 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-15 工作树已修复 SEC-02/SEC-08/SEC-12，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；SEC-12 补充 Cookie 默认值开关、显式 `SameSite=None` 与 `ProxyFix` 场景；尚未提交或发布。2026-11-16 提交 `1349295` 补充 JWT 解码强制 `iat`、CSRF session token 改用 `secrets.token_urlsafe(32)`、TOTP secret 改为 flush 加服务层提交、未知 serializer 默认 30 分钟，以及用户/锁定时间统一 UTC；代码已提交，尚未发布。 |
 > | 适用仓库 | `flask-exts` |
 >
 > **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。
@@ -232,7 +232,7 @@ def derive_key(secret_key, purpose):
 
 要点：
 
-- `SECRET_KEY` 为 `None`/空时，`derive_key` 抛 `RuntimeError`/`ValueError`。
+- `SECRET_KEY` 为 `None`/空时，`derive_key` 抛 `RuntimeError`/`ValueError`；`Security.init_app()` 在初始化阶段即检查，缺失时直接抛 `RuntimeError`，避免延迟到首次使用才失败。
 - 不同 purpose 的密钥互不相等，避免“一处泄露、处处可用”。
 - 派生上下文带 `v1`，为未来迁移留出版本位。
 - **JWT 使用独立密钥**，不要复用 `SECRET_KEY`。
@@ -548,11 +548,16 @@ class UserMixin(FlaskLoginUserMixin):
 `get_within()`：
 
 ```python
-default_max_age = 1800 if serializer_name == "reset_password" else 86400 * 7
+_DEFAULT_MAX_AGES = {
+    "reset_password": 1800,
+    "verify_email": 86400 * 7,
+    "change_email": 86400 * 7,
+}
+default_max_age = _DEFAULT_MAX_AGES.get(serializer_name, 1800)
 return self.app.config.get(f"{serializer_name.upper()}_MAX_AGE", default_max_age)
 ```
 
-可覆盖配置：`RESET_PASSWORD_MAX_AGE`、`VERIFY_EMAIL_MAX_AGE`、`CHANGE_EMAIL_MAX_AGE`。
+可覆盖配置：`RESET_PASSWORD_MAX_AGE`、`VERIFY_EMAIL_MAX_AGE`、`CHANGE_EMAIL_MAX_AGE`。未知 serializer 使用 1800 秒的保守默认值，不继承 7 天。
 
 ### 6.2 令牌载荷与失效条件
 
@@ -647,12 +652,14 @@ return self.app.config.get(f"{serializer_name.upper()}_MAX_AGE", default_max_age
 ```python
 csrf_field_name = current_app.config.get("CSRF_FIELD_NAME", "csrf_token")
 if csrf_field_name not in session:
-    session[csrf_field_name] = hashlib.sha1(os.urandom(64)).hexdigest()
+    session[csrf_field_name] = secrets.token_urlsafe(32)
 
 csrf_secret_key = csrf_key(current_app.secret_key, current_app.config)
 s = URLSafeTimedSerializer(csrf_secret_key, salt=CSRF_SALT)
 csrf_token = s.dumps(session[csrf_field_name])
 ```
+
+session 内的 token 使用 CSPRNG（`secrets.token_urlsafe(32)`）生成，不使用哈希函数模拟随机数。
 
 校验：
 
@@ -743,6 +750,7 @@ def safe_redirect_target(target, fallback):
 
 - Jinja 默认自动转义；不要对用户输入使用 `|safe`。
 - `Markup` 会绕过转义；例如 demo 的 `phone_number_formatter` 使用 `Markup` 包裹格式化后的电话号码。新增 formatter 时确认数据来源可信，或显式转义。
+- 内置 `bool_formatter` 会把列名插入 `title` 属性；该值已用 `markupsafe.escape()` 转义，避免列名注入 HTML。自定义 formatter 同样不能直接拼接未转义的值。
 - 富文本字段若允许 HTML，需要单独的白名单清洗（当前库不提供）。
 
 ## 8. 双因素认证（TFA）
@@ -754,7 +762,7 @@ def get_or_create_totp_secret(self):
     if self.totp_secret is None:
         plaintext = tfa.generate_totp_secret()
         self.totp_secret = current_security.encryptor.encrypt(plaintext)
-        db.session.commit()
+        db.session.flush()
         return plaintext
     return self.get_totp_secret()
 
@@ -764,6 +772,7 @@ def get_totp_secret(self):
     return current_security.encryptor.decrypt(self.totp_secret)
 ```
 
+- 模型只 `flush()` 把变更写入当前事务，不自行 `commit()`；`setup_tfa` 等服务层通过 `current_userstore.save_user()` 提交，保持事务边界在服务层。
 - 使用 AES-256-GCM；每次加密使用随机 nonce，密文为 `nonce || ciphertext` 的 URL-safe base64。
 - 数据库泄露时，攻击者不能直接读取 TOTP secret。
 - 但 `SECRET_KEY` 泄露或轮换会影响解密（见 10.4）。
@@ -833,7 +842,7 @@ def get_totp_secret(self):
   - 作用：连续失败次数，密码错误与第二因子错误共用
 
 - `locked_until`
-  - 类型：`timestamp NULL`
+  - 类型：`timestamp NULL`（UTC）
   - 作用：锁定截止时间，过期后自动恢复
 
 行为：
@@ -844,6 +853,7 @@ def get_totp_secret(self):
 - 只有完整登录成功（密码，或密码 + 第二因子）或成功重置密码才清零计数；仅密码正确不会清零。
 - 锁定状态与 `is_active` 分离：前者自动过期，后者是管理员禁用。
 - 计数存在数据库中，因此与客户端 IP 无关，并在共享同一数据库的多进程/多实例间一致。
+- `locked_until` 与用户模型的其他时间列统一使用 UTC；无时区数据库保存 UTC wall time，读出为 aware UTC。历史行若写入的是本地 naive 时间，升级后会被按 UTC 解释，需要按原部署时区迁移。
 
 未覆盖的部分：
 
@@ -879,7 +889,7 @@ def jwt_encode_for_user(user, amr=None, delta=None):
 ```
 
 - 默认有效期 900 秒；`jwt_encode` 写入 `iat`、`exp`、`token_use`。
-- `jwt_decode` 要求 `exp`/`token_use`，并通过 `JWT_LEEWAY` 容忍多实例时钟偏差（默认 `0`）。
+- `jwt_decode` 要求 `exp`/`iat`/`token_use`，并通过 `JWT_LEEWAY` 容忍多实例时钟偏差（默认 `0`）；缺少 `iat` 的旧令牌会被拒绝。
 - 访问令牌另含 `pwd` 与 `amr`；`pwd` 是 `Blake2bHasher` 的带密钥指纹，与 session 的 `get_id()` 同源。
 - `amr` 至少含 `pwd`；完成 TOTP 或恢复码后含 `otp`。TFA 用户缺少 `otp` 时签发函数直接抛 `ValueError`。
 - `amr` 参数只接受字符串或字符串可迭代对象；`amr="otp"` 视为单个方法，不再按字符拆分。
@@ -950,8 +960,8 @@ if "Authorization" in request.headers:
 ### 10.1 必需配置
 
 - `SECRET_KEY`
-  - 要求：必填，强随机
-  - 说明：派生会话/CSRF/令牌/加密密钥
+  - 要求：必填，强随机，并在 `Security.init_app()` 之前配置
+  - 说明：派生会话/CSRF/令牌/加密密钥；缺失时初始化直接抛 `RuntimeError`
 
 - `SQLALCHEMY_DATABASE_URI`
   - 要求：必填

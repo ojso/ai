@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-16 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 已按本轮代码审查修复同步契约：JWT 解码强制 `iat`、令牌未知 serializer 默认 30 分钟、负 `page`/`offset` 夹到 0、列表页码链接修复、用户与锁定时间统一 UTC；全量实跑 330 passed，尚未发布 |
 > | 适用仓库 | `flask-exts` |
 >
 > **使用规则**：
@@ -158,6 +158,8 @@ REQ-<领域>-<序号>
 - **单独批准**：2026-11-14，`REQ-AUTH-012`（JWT 绑定凭据状态与 TFA 完成状态）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，277 passed）；批准人 d.hua
 - **单独批准**：2026-11-14，`REQ-AUTH-013`（JWT 算法、密钥与声明校验硬化）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，301 passed），实现与测试提交为 `db1b35e`、`c8b45a8`；批准人 d.hua
 - **单独批准**：2026-11-14，`REQ-SEC-001`（安全 Cookie 与响应头默认值）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，311 passed）；批准人 d.hua
+- **重新批准**：2026-11-16，`REQ-AUTH-013`（JWT 解码新增 `iat` 必填）；依据为提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 的全量实跑（Python 3.13.5，330 passed），基线登记见 `testing.md` 第 10.5 节 2026-11-16 行；批准人 d.hua
+- **重新批准**：2026-11-16，`REQ-TOKEN-002`（未知 serializer 默认 1800 秒）；依据同上；批准人 d.hua
 
 后续若出现单独批准或重新批准，应在该条目 `lifecycle` 的括号内注明日期与差异，并在本节追加一条。批准记录不得由 AI 代填。
 
@@ -420,14 +422,14 @@ REQ-<领域>-<序号>
 
 - **lifecycle**：`approved`
 - **implementation**：`implemented`（HEAD `445b03d` 静态核对，行为与下列验收入口一致）
-- **verification**：`passed`（2026-11-13 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节）
+- **verification**：`passed`（2026-11-16 实跑：提交 `134929564791b2d5bc843685650ee8ccd13d1bc6`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-16 行）
 - **前置**：用户存在；失败可来自密码错误或第二因子验证码错误
 - **输入**：登录表单、`/user/verify_tfa/`、`/user/recovery/`
-- **行为**：每次失败在同一用户行上累加 `failed_login_count`；达到 `USER_LOGIN_MAX_FAILURES`（默认 5）后设置 `locked_until`，延迟从 `USER_LOGIN_LOCKOUT_BASE_SECONDS`（默认 60 秒）起按 2 的幂增长，上限 `USER_LOGIN_LOCKOUT_MAX_SECONDS`（默认 3600 秒）；锁定期间不做密码校验，直接拒绝；只有完整登录成功或成功重置密码才清零
+- **行为**：每次失败在同一用户行上累加 `failed_login_count`；达到 `USER_LOGIN_MAX_FAILURES`（默认 5）后设置 `locked_until`，延迟从 `USER_LOGIN_LOCKOUT_BASE_SECONDS`（默认 60 秒）起按 2 的幂增长，上限 `USER_LOGIN_LOCKOUT_MAX_SECONDS`（默认 3600 秒）；锁定期间不做密码校验，直接拒绝；只有完整登录成功或成功重置密码才清零；`locked_until` 及用户模型时间列使用 UTC 计算与存储
 - **输出/副作用**：登录页提示 `Too many failed sign-in attempts. Try again in ...`；pending TFA 状态被清理；锁定不修改 `is_active`
 - **错误**：`AccountLockedError`（`field="username"`，带 `retry_after` 秒数）；锁定参数非法时抛 `ValueError`
-- **不变量**：按账号而非按 IP 计数；共享同一数据库的多进程/多实例结果一致；自动过期，不需要管理员解锁；锁定期内密码正确也拒绝；自定义 `UserStore` 必须声明并实现 `login_user_by_username_password`、`is_locked`、`record_login_failure`、`clear_login_failures`，缺失时无法实例化
-- **验收**：`testing.md` TC-AUTH-031~TC-AUTH-033；`tests/integration/userstore/test_sqla_userstore.py`、`tests/integration/usercenter/test_user_view.py::test_repeated_failed_logins_lock_the_account`、`test_failed_tfa_codes_lock_the_account`、`test_password_reset_clears_lockout`
+- **不变量**：按账号而非按 IP 计数；共享同一数据库的多进程/多实例结果一致；自动过期，不需要管理员解锁；锁定期内密码正确也拒绝；锁定截止时间比较在 UTC 下进行，不因进程本地时区不同而漂移；无时区数据库存 UTC wall time，历史 naive 值按 UTC 解释；自定义 `UserStore` 必须声明并实现 `login_user_by_username_password`、`is_locked`、`record_login_failure`、`clear_login_failures`，缺失时无法实例化
+- **验收**：`testing.md` TC-AUTH-031~TC-AUTH-033；`tests/integration/userstore/test_sqla_userstore.py`、`tests/integration/userstore/test_sqla_userstore.py::test_model_timestamps_are_timezone_aware_utc`、`tests/integration/usercenter/test_user_view.py::test_repeated_failed_logins_lock_the_account`、`test_failed_tfa_codes_lock_the_account`、`test_password_reset_clears_lockout`
 - **关联**：`security.md` 8.5/11（SEC-03）；`REQ-AUTH-009`
 
 ### REQ-AUTH-012 JWT 绑定凭据状态与 TFA 完成状态
@@ -446,16 +448,16 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-013 JWT 算法、密钥与声明校验硬化
 
-- **lifecycle**：`approved`（2026-11-14 单独批准，范围仅本条）
-- **implementation**：`implemented`（2026-11-14 提交 `db1b35e`：算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写、`id`/`amr` 严格解析）
-- **verification**：`passed`（2026-11-14 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 加未提交工作树差异，其后实现与测试提交为 `db1b35e`、`c8b45a8`；Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-14 JWT 硬化行）
+- **lifecycle**：`approved`（2026-11-16 重新批准，变更范围：JWT 解码新增 `iat` 必填；此前 2026-11-14 单独批准，范围仅本条）
+- **implementation**：`implemented`（2026-11-14 提交 `db1b35e`：算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写、`id`/`amr` 严格解析；2026-11-16 提交 `1349295` 补充解码强制要求 `iat`）
+- **verification**：`passed`（2026-11-16 实跑：提交 `134929564791b2d5bc843685650ee8ccd13d1bc6`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-16 行）
 - **前置**：应用配置 JWT 功能
 - **输入**：`jwt_encode` / `jwt_decode` / `jwt_encode_for_user` 的载荷、密钥、算法、`JWT_LEEWAY` 与 `Authorization` 头
-- **行为**：签发与解码只接受 `HS256`/`HS384`/`HS512`；首次使用校验 `JWT_SECRET_KEY` 已设置、至少 32 字节且不同于 `SECRET_KEY`；编码写入 `iat`/`exp`/`token_use`，解码要求 `exp`/`token_use` 并按 `JWT_LEEWAY` 容忍时钟偏差；Bearer scheme 大小写不敏感；`id` 只接受整数或纯十进制字符串；`amr` 接受字符串或字符串可迭代对象，字符串视为单个方法
+- **行为**：签发与解码只接受 `HS256`/`HS384`/`HS512`；首次使用校验 `JWT_SECRET_KEY` 已设置、至少 32 字节且不同于 `SECRET_KEY`；编码写入 `iat`/`exp`/`token_use`，解码要求 `exp`/`iat`/`token_use` 并按 `JWT_LEEWAY` 容忍时钟偏差；Bearer scheme 大小写不敏感；`id` 只接受整数或纯十进制字符串；`amr` 接受字符串或字符串可迭代对象，字符串视为单个方法
 - **输出/副作用**：合规令牌正常签发与解析；不合规配置或输入在首次使用时失败
-- **错误**：算法或密钥不合规抛 `RuntimeError`；`amr` 类型错误抛 `TypeError`；畸形头与解码失败抛 `InvalidAuthorizationError`；无效 `id` 或 `pwd` 不匹配按匿名处理
+- **错误**：算法或密钥不合规抛 `RuntimeError`；`amr` 类型错误抛 `TypeError`；畸形头与解码失败抛 `InvalidAuthorizationError`；缺少 `exp`/`iat`/`token_use` 的令牌被拒绝；无效 `id` 或 `pwd` 不匹配按匿名处理
 - **不变量**：`none` 永不被接受；算法与密钥校验失败不签发令牌；`amr="otp"` 不会被拆成单个字符；`id=True` 与 `id=1.9` 不会被解析为用户 1
-- **验收**：`tests/integration/builtin_extensions/test_login.py::test_unsupported_jwt_algorithm_is_rejected`、`test_unsupported_configured_jwt_algorithm_is_rejected`、`test_jwt_requires_secret_key`、`test_jwt_rejects_short_secret_key`、`test_jwt_rejects_secret_key_shared_with_flask_secret`、`test_jwt_encode_records_issued_at`、`test_jwt_decode_honours_configured_leeway`、`test_jwt_encode_for_user_accepts_amr_string`、`test_jwt_encode_for_user_rejects_invalid_amr`、`test_bearer_token_rejects_non_integer_user_id`、`test_bearer_scheme_is_case_insensitive`；执行证据见 `testing.md` 第 10.5 节 2026-11-14 JWT 硬化行
+- **验收**：`tests/integration/builtin_extensions/test_login.py::test_unsupported_jwt_algorithm_is_rejected`、`test_unsupported_configured_jwt_algorithm_is_rejected`、`test_jwt_requires_secret_key`、`test_jwt_rejects_short_secret_key`、`test_jwt_rejects_secret_key_shared_with_flask_secret`、`test_jwt_encode_records_issued_at`、`test_jwt_decode_requires_issued_at`、`test_jwt_decode_honours_configured_leeway`、`test_jwt_encode_for_user_accepts_amr_string`、`test_jwt_encode_for_user_rejects_invalid_amr`、`test_bearer_token_rejects_non_integer_user_id`、`test_bearer_scheme_is_case_insensitive`；执行证据见 `testing.md` 第 10.5 节 2026-11-16 行
 - **关联**：`security.md` 9.1～9.3、10.2；`REQ-AUTH-012`
 
 ## 6. 授权
@@ -672,16 +674,16 @@ REQ-<领域>-<序号>
 
 ### REQ-TOKEN-002 令牌有效期与配置
 
-- **lifecycle**：`approved`
-- **implementation**：`implemented`（HEAD `445b03d` 静态核对，行为与下列验收入口一致）
-- **verification**：`passed`（2026-11-13 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节）
+- **lifecycle**：`approved`（2026-11-16 重新批准，变更范围：未知 serializer 默认 1800 秒）
+- **implementation**：`implemented`（HEAD `445b03d` 静态核对；2026-11-16 提交 `1349295` 改为显式 serializer 默认值映射，未知 serializer 回退 1800 秒）
+- **verification**：`passed`（2026-11-16 实跑：提交 `134929564791b2d5bc843685650ee8ccd13d1bc6`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-16 行）
 - **前置**：无
 - **输入**：`RESET_PASSWORD_MAX_AGE` / `VERIFY_EMAIL_MAX_AGE` / `CHANGE_EMAIL_MAX_AGE`
-- **行为**：重置默认 1800 秒；验证/改邮箱默认 7 天；超过有效期返回 `expired`
+- **行为**：重置默认 1800 秒；验证/改邮箱默认 7 天；未知 serializer 默认 1800 秒，不再静默继承 7 天；超过有效期返回 `expired`
 - **输出/副作用**：过期令牌被拒绝
 - **错误**：`ExpiredTokenError`
-- **不变量**：过期令牌不能执行动作
-- **验收**：`testing.md` TC-SEC-006；`tests/integration/security/test_core.py::test_serializer` 中第 51-57 行关于 `max_age=2` 的过期断言代码被注释，未形成有效自动化验收（测试缺口，待补）。
+- **不变量**：过期令牌不能执行动作；未知 serializer 的有效期不得超过保守默认值
+- **验收**：`testing.md` TC-SEC-006；`tests/integration/security/test_core.py::TestSecurity::test_unknown_serializer_uses_conservative_default_max_age` 覆盖未知 serializer 的默认值与配置覆盖；`tests/integration/security/test_core.py::test_serializer` 中第 51-57 行关于 `max_age=2` 的过期断言代码被注释，未形成有效自动化验收（测试缺口，待补）。
 - **关联**：`security.md` 6.1
 
 ### REQ-TOKEN-003 无效/篡改/用户不存在令牌被拒绝
@@ -711,11 +713,11 @@ REQ-<领域>-<序号>
 ### REQ-CSRF-001 令牌按会话生成并使用派生密钥
 
 - **lifecycle**：`approved`
-- **implementation**：`implemented`（HEAD `445b03d` 静态核对，行为与下列验收入口一致）
-- **verification**：`passed`（2026-11-13 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节）
+- **implementation**：`implemented`（HEAD `445b03d` 静态核对；2026-11-16 提交 `1349295` 将 session token 生成改为 `secrets.token_urlsafe(32)`）
+- **verification**：`passed`（2026-11-16 实跑：提交 `134929564791b2d5bc843685650ee8ccd13d1bc6`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-16 行）
 - **前置**：`CSRF_ENABLED=True`
 - **输入**：表单/请求
-- **行为**：session 中生成随机 token；用 `CSRF_SECRET_KEY` 或从 `SECRET_KEY` 派生的 CSRF 密钥签名；同一请求内 `g` 缓存
+- **行为**：session 中使用 CSPRNG 生成随机 token（`secrets.token_urlsafe(32)`）；用 `CSRF_SECRET_KEY` 或从 `SECRET_KEY` 派生的 CSRF 密钥签名；同一请求内 `g` 缓存
 - **输出/副作用**：表单包含 `csrf_token`
 - **错误**：无
 - **不变量**：CSRF 密钥与主密钥/其他用途密钥隔离
@@ -770,11 +772,11 @@ REQ-<领域>-<序号>
 
 - **前置**：已授权访问 ModelView
 - **输入**：`page`、`page_size`
-- **行为**：`page` 从 0 开始；`page_size` 必须在白名单内，否则回退默认；返回当前页数据与总数
+- **行为**：`page` 从 0 开始；负数 `page` 夹到 0；非整数 `page` 回退 0；`page_size` 必须在白名单内，否则回退默认；返回当前页数据与总数
 - **输出/副作用**：列表模板渲染
 - **错误**：非法参数回退默认
-- **不变量**：分页不能越界导致 500；总数与页数一致
-- **验收**：`testing.md` TC-ADMIN-002～TC-ADMIN-004；`test_pagination.py`
+- **不变量**：分页不能越界导致 500；负数页码不产生负 offset；总数与页数一致
+- **验收**：`testing.md` TC-ADMIN-002～TC-ADMIN-004；`tests/unit/admin/model/test_pagination.py::test_get_list_args_clamps_negative_page`、`tests/integration/admin/sqla/test_pagination.py`
 - **关联**：`spec.md` 10.12
 
 ### REQ-ADMIN-002 搜索
@@ -851,21 +853,21 @@ REQ-<领域>-<序号>
 
 - **前置**：`ajax_refs` 或 `column_editable_list` 配置
 - **输入**：`/ajax/lookup/`、`/ajax/update/` JSON 请求
-- **行为**：按 term 搜索关联记录并返回 `(id, text)`；内联更新校验 CSRF 后保存
+- **行为**：按 term 搜索关联记录并返回 `(id, text)`；负数 `offset` 夹到 0；内联更新校验 CSRF 后保存
 - **输出/副作用**：JSON 响应；数据库更新
 - **错误**：无权限/CSRF/校验失败拒绝
-- **不变量**：不能通过 AJAX 绕过授权/CSRF
-- **验收**：`testing.md` TC-ADMIN-022；`test_ajax.py`/`test_inline_ajax.py`
+- **不变量**：不能通过 AJAX 绕过授权/CSRF；负数 offset 不产生数据库错误
+- **验收**：`testing.md` TC-ADMIN-022；`tests/integration/admin/sqla/test_ajax.py`、`tests/integration/admin/sqla/test_inline_ajax.py`
 - **关联**：`spec.md` 10.10 / CR-001（本轮 HEAD 静态核对，未专项测试）
 
 ### REQ-ADMIN-009 导出
 
 - **前置**：`can_export=True`
 - **输入**：导出类型、当前搜索/筛选/排序
-- **行为**：按 `column_export_list` 导出；CSV 流式；tablib 格式；`export_max_rows` 限制；不支持的格式提示并重定向
+- **行为**：按 `column_export_list` 导出；CSV 流式；tablib 格式；`export_max_rows` 限制；不支持的格式提示并重定向；导出值按原样写出，不做电子表格公式注入中和
 - **输出/副作用**：文件下载
 - **错误**：不支持的格式/宏格式化器拒绝
-- **不变量**：导出不能绕过授权；不能导出超过上限
+- **不变量**：导出不能绕过授权；不能导出超过上限；导出内容不因公式前缀（`=`、`+`、`-`、`@` 等）而改变
 - **验收**：`testing.md` TC-ADMIN-013～TC-ADMIN-015；`test_export.py`
 - **关联**：`spec.md` 10.11
 
@@ -887,16 +889,16 @@ REQ-<领域>-<序号>
 ### REQ-ADMIN-011 列表 URL 正确编码
 
 - **lifecycle**：`approved`
-- **implementation**：`implemented`（`get_list_url` 使用 `urllib.parse.urlencode(params, doseq=True)`；移除 `hasattr(self, "get_url")` 死分支，改为 `self.view.get_url(".index_view")`）
-- **verification**：`passed`（`test_get_list_url_encodes_special_characters`、`test_search_url_encodes_special_characters`；执行证据见 `testing.md` 第 10.5 节 2026-11-13 行（HEAD `445b03d`））
+- **implementation**：`implemented`（`get_list_url` 使用 `urllib.parse.urlencode(params, doseq=True)`；移除 `hasattr(self, "get_url")` 死分支，改为 `self.view.get_url(".index_view")`；2026-11-16 提交 `1349295` 修复页码链接：`page > 0` 时保留零基页码，不再因 `page > 1` 丢弃第二页链接）
+- **verification**：`passed`（`test_get_list_url_encodes_special_characters`、`test_get_list_url_omits_first_page_and_keeps_later_pages`、`test_search_url_encodes_special_characters`；执行证据见 `testing.md` 第 10.5 节 2026-11-16 行（提交 `1349295`））
 - **前置**：搜索词/筛选值含空格、`&`、`#`、非 ASCII 字符等
 - **输入**：分页/排序/搜索/筛选参数
-- **行为**：生成的列表 URL 必须正确编码并可回放
+- **行为**：生成的列表 URL 必须正确编码并可回放；第 0 页省略 `page`，第 1 页及以后保留零基 `page`
 - **输出/副作用**：URL 可访问且结果一致
 - **错误**：无
-- **不变量**：列表 URL 经回放后搜索/筛选/排序结果与生成时一致，特殊字符不丢失
-- **本轮实现观察**：空格、`&`、非 ASCII 字符搜索词生成的列表 URL 可正确编码并回放；`sort=0` 不再被丢弃。
-- **验收**：`testing.md` TC-ADMIN-032；`tests/unit/admin/model/test_pagination.py`、`tests/integration/admin/sqla/test_search.py`
+- **不变量**：列表 URL 经回放后搜索/筛选/排序结果与生成时一致，特殊字符不丢失；第 1 页链接不会丢失 `page=1`
+- **本轮实现观察**：空格、`&`、非 ASCII 字符搜索词生成的列表 URL 可正确编码并回放；`sort=0` 不再被丢弃；第二页及后续页可打开请求的页码。
+- **验收**：`testing.md` TC-ADMIN-032；`tests/unit/admin/model/test_pagination.py::test_get_list_url_omits_first_page_and_keeps_later_pages`、`tests/integration/admin/sqla/test_search.py`
 - **关联**：`spec.md` 10.12；`CR-005` / `CR-006`（已修复）
 
 ### REQ-ADMIN-012 复合主键与字符串主键
