@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 已按本轮代码审查修复同步契约：JWT 解码强制 `iat`、令牌未知 serializer 默认 30 分钟、负 `page`/`offset` 夹到 0、列表页码链接修复、用户与锁定时间统一 UTC；全量实跑 330 passed，尚未发布。2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`，受限方法对匿名请求返回 403；全量实跑 338 passed。2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后全量实跑 389 passed。2026-11-18 新增并批准 `REQ-AUTHZ-007`～`REQ-AUTHZ-009`，记录 RBAC requirement 模型、视图声明与授权器选择；同日按用户要求在共用登录门 `Authorizer.check_view_access()` 为 active `admin` 增加超级权限，全量实跑 394 passed |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 已按本轮代码审查修复同步契约：JWT 解码强制 `iat`、令牌未知 serializer 默认 30 分钟、负 `page`/`offset` 夹到 0、列表页码链接修复、用户与锁定时间统一 UTC；全量实跑 330 passed，尚未发布。2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`，受限方法对匿名请求返回 403；全量实跑 338 passed。2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后全量实跑 389 passed。2026-11-18 新增并批准 `REQ-AUTHZ-007`～`REQ-AUTHZ-009`，记录 RBAC requirement 模型、视图声明与授权器选择；同日按用户要求在共用登录门 `Authorizer.check_view_access()` 为 active `admin` 增加超级权限，全量实跑 394 passed；2026-11-18 发布 `0.5.0`（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`，本地标签未推送），全量实跑 **393 passed**（此前 394 未复现，以 393 为准） |
 > | 适用仓库 | `flask-exts` |
 >
 > **使用规则**：

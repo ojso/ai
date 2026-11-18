@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）。2026-11-18 `examples/demo` 启用 `SECURITY_AUTHORIZER="rbac"`，并新增 `user_interest` 模型与 `InterestView` 对象级授权示例；随 `0.5.0` 提交（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`，本地标签未推送）。 |
 > | 适用目录 | `flask-exts/examples/demo`——代码仓库根目录下的示例应用；本文其余位置简写的 `examples/demo` 均指此路径，命令中的该路径相对仓库根目录执行 |
 >
 > **定位**：`examples/demo` 是**可运行的参考应用**，不是生产模板。它用尽量少的代码展示 Flask-Exts 的模型、Admin、Inline、筛选、排序、导出、AJAX、递归关系和自定义模板能力。修改 demo 时优先保证“能运行、能看懂、不引入额外依赖”。
@@ -50,6 +50,12 @@
 - **密码**：`admin`
 - **角色**：`admin`
 
+RBAC 演示账号：
+
+- **用户名/密码**：`alice` / `alice`、`bob` / `bob`
+- **角色**：无 `admin` 角色
+- **用途**：只能访问兴趣视图；可查看所有用户的兴趣，但只能编辑自己的记录
+
 > 默认密码仅用于本地演示。任何可被他人访问的环境都必须修改。
 
 ### 0.3 常用命令
@@ -89,6 +95,8 @@ rm examples/demo/demo.sqlite
 - **模型与关系**：`models/`
 - **Admin 视图**：`views/`、`admin_views.py`
 - **模板与静态资源**：`templates/`、`static/`
+- **授权器切换**：`make_app.py` 通过 `SECURITY_AUTHORIZER = "rbac"` 启用 `RBACAuthorizer`；授权规则见 [`security.md` 4.6](./security.md#46-可选-rbacauthorizer)
+- **RBAC 对象级授权**：`InterestView` 用 `Authenticated()` 放行全量只读，用 `Predicate` 把编辑限制到当前用户自己的 `UserInterest`
 
 各视图展示点见第 5.2 节，模板接入状态见第 6.3 节。
 
@@ -116,8 +124,8 @@ examples/
     ├── admin_views.py       # Admin 视图注册
     ├── build_sample.py      # 示例数据
     ├── file_op.py           # 上传辅助模块（未接入路由）
-    ├── models/              # author、post、tag、post_tag、tree
-    ├── views/               # author、post、tag、tree
+    ├── models/              # author、post、tag、post_tag、tree、user_interest
+    ├── views/               # author、interest、post、tag、tree
     ├── templates/           # tree_list.html 等示例模板
     └── static/
 ```
@@ -139,7 +147,7 @@ examples/demo/__init__.py  →  create_app()
         ▼
 make_app.create_app()
   1. Flask(__name__, instance_relative_config=True)
-  2. 设置 APP_NAME / SECRET_KEY
+  2. 设置 APP_NAME / SECRET_KEY / SECURITY_AUTHORIZER
   3. 读取可选的 instance/config.py、instance/config_prod.py
   4. 计算 DATABASE_FILE，设置 SQLALCHEMY_DATABASE_URI
   5. ExtensionManager().init_app(app)
@@ -156,7 +164,8 @@ make_app.create_app()
 1. **先初始化扩展，再导入模型**：`ExtensionManager.init_app()` 会创建/绑定 `db`，之后 `models` 中的 `db.Model` 才能正确注册到同一 metadata。
 2. **先导入模型，再注册视图**：`SqlaModelView(Model)` 需要模型类；注册时 Flask 立即创建并注册蓝图。
 3. **先注册视图，再建库**：`build_sample_db()` 需要 `db.Model.metadata` 已包含所有模型。
-4. **初始化只跑一次**：`db` 是模块级单例，同一进程不要重复 `create_app()` 后同时持有两个 app；测试/多 app 场景先 `dispose()`。
+4. **授权器在扩展初始化时确定**：`ExtensionManager.init_app()` 初始化 `Security` 插件时读取 `SECURITY_AUTHORIZER`，因此该配置必须在第 3.1 节调用链的第 5 步之前写入；未声明要求的视图回落到共享的 `admin` 角色规则，`InterestView` 的按方法 requirement 见第 5.7 节。
+5. **初始化只跑一次**：`db` 是模块级单例，同一进程不要重复 `create_app()` 后同时持有两个 app；测试/多 app 场景先 `dispose()`。
 
 ### 3.3 配置与数据库边界
 
@@ -176,7 +185,12 @@ Author 1 ─────── N Post N ─────── M Tag
 
 Tree 1 ─────── N Tree
       parent_id
+
+User 1 ─────── 1 UserInterest
+                user_id（唯一，指向 users.id）
 ```
+
+`User` 来自库的 `userstore`；其余模型定义在 `examples/demo/models/`。
 
 ### 4.2 模型职责
 
@@ -205,9 +219,16 @@ Tree 1 ─────── N Tree
   - 关键字段：`name`、`parent_id`
   - 演示点：自引用/递归关系
 
+- `UserInterest`
+  - 表：`user_interest`
+  - 关键字段：`user_id`（唯一，指向 `users.id`）、`content`
+  - 演示点：1:1 归属、单向关系、RBAC 对象级授权
+
 ### 4.3 关系约定
 
 模型使用 SQLAlchemy 2.0 `Mapped` / `mapped_column`。双向关系显式使用 `back_populates`；`Author` / `Post` 展示一对多，`Post` / `Tag` 使用独立关联表，`Tree` 展示自引用关系。具体字段和关系以 `models/` 中的示例为准。
+
+`UserInterest.user` 是单向关系：反向属性需要落在库的 `User` 模型上，demo 不为示例新增库 schema；1:1 由 `user_id` 的唯一约束保证。
 
 ### 4.4 `Author.phone_number`
 
@@ -243,6 +264,10 @@ Tree 1 ─────── N Tree
   - 模型：`Tree`
   - 演示点：自定义列表模板、`render()` 传参、递归关系
 
+- `InterestView`
+  - 模型：`UserInterest`
+  - 演示点：RBAC 登录门、`Authenticated()` 全量只读、`Predicate` 仅本人编辑
+
 ### 5.3 `AuthorView`
 
 `AuthorView` 展示 Inline `Post`、表单 choices/validators、只读字段、固定分页和禁用删除。编辑表单将 `featured_post` 限定为当前作者的文章；`DEFAULT_SORT` 的格式见 [`spec.md` 第 10.4.2 节](./spec.md#1042-配置属性)。完整取值以 `views/author_view.py` 为准。
@@ -259,7 +284,39 @@ demo 自定义过滤器 `FilterNameBrown`、`FilterLike` 的配置见 `views/pos
 
 `TreeView` 的 demo 实现在 `views/tree_view.py` 与 `templates/tree_list.html`；模板需保留父模板内容（`{{ super() }}`），`render()` 可传额外模板参数。通用模板 API 见 `spec.md` 第 10.14.2 节。
 
-### 5.7 新增 Admin 视图的标准步骤
+### 5.7 `InterestView`：RBAC 对象级授权
+
+`InterestView` 展示 `RBACAuthorizer` 的按方法 requirement，实现在 `views/interest_view.py`：
+
+- `permission = Authenticated()`
+  - 作用：任何已登录用户都能读取全部兴趣（列表、详情、导出）。
+  - 登录门先于 requirement：匿名请求直接 403，不会进入该判定。
+
+- `permissions = {"create_view": ..., "edit_view": ...}`
+  - `create_view`：仅当当前用户还没有兴趣记录时放行。
+  - `edit_view`：`Predicate` 读取 `request.args["id"]` 对应的记录，只有 `user_id` 等于当前用户时才放行。
+  - 键必须是被包装的方法名（`create_view` / `edit_view` / `delete_view`）；写成 `"delete"` 之类的 URL 动作名不会匹配，静默回落到视图级 `permission`。
+
+- 归属写入
+  - 表单只包含 `content`，`user_id` 不在表单中。
+  - `create_model()` 用 `current_user.id` 写入归属，请求无法改归属。
+
+- 删除
+  - `can_delete = False`，并在 `action_disallowed_list` 中禁用 `delete`；页面不出现删除入口，直接构造删除请求也不会删除记录。
+
+- 内联编辑（未启用）
+  - 视图未设置 `column_editable_list`，`ajax_update` 会直接返回 404。
+  - 若以后启用列表内联编辑，必须同时为 `ajax_update` 声明读取 `pk` 的归属谓词，否则该接口会绕过 `edit_view` 的对象检查。
+
+- 管理员例外
+  - `admin` 角色命中共享超级用户规则，可编辑任意用户的兴趣；普通用户只受自身 `Predicate` 约束。
+
+- 1:1 约束
+  - `user_interest.user_id` 唯一；模型侧只声明单向 `user` 关系，反向属性不落在库的 `User` 上。
+
+判定顺序：共享登录门 → 按方法名取 requirement → `Predicate` 做对象归属检查 → 未声明的方法使用视图级 `Authenticated()`。
+
+### 5.8 新增 Admin 视图的标准步骤
 
 已有模型新增视图时，在 `views/` 创建 `foo_view.py` 并于 `admin_views.py` 注册。新增模型、视图与种子数据的完整步骤见第 9.1 节；需要新表时按第 0.4 节重建可丢弃的本地数据库。
 
@@ -308,6 +365,7 @@ Flask 会先找应用自己的 `templates/`，再找扩展提供的模板。demo
 - **Tree**：1 个 Trunk、5 个 Branch、25 个 Leaf
 - **Post**：25 个作者、9 个标签、25 篇文章
 - **用户**：创建初始 `admin` 用户并分配 `admin` 角色
+- **RBAC 演示数据**：创建 `alice`、`bob`（无 `admin` 角色），各写入一条 `UserInterest`
 
 该函数含 `drop_all()`，只允许用于可丢弃的本地 demo 数据库。
 
@@ -344,6 +402,10 @@ Flask 会先找应用自己的 `templates/`，再找扩展提供的模板。demo
 - `SECRET_KEY`
   - 值：`"demo"`
   - 作用：会话、CSRF、令牌派生密钥；**仅本地**
+
+- `SECURITY_AUTHORIZER`
+  - 值：`"rbac"`
+  - 作用：启用 `RBACAuthorizer`；`InterestView` 使用 `Authenticated()` 与 `Predicate`，其余视图未声明要求时回落到 `admin` 角色规则（`admin/admin` 仅本地演示）；规则见 [`security.md` 4.6](./security.md#46-可选-rbacauthorizer)
 
 - `DATABASE_FILE`
   - 值：`examples/demo/demo.sqlite` 的绝对路径
@@ -502,6 +564,12 @@ demo 目前没有自定义 CLI。若新增，在 `make_app.py` 的 `init_app(app
 - [ ] Post 列表能按作者、日期排序，能按标题/作者搜索
 - [ ] CSV 导出可用；XLS 在安装 `tablib[xls]` 后可用
 - [ ] `Post` 的 AJAX 作者外键能搜索并保存
+- [ ] `/admin/interest/` 未登录返回 403
+- [ ] `alice/alice` 登录后能看到所有用户的兴趣（含 `bob`），详情页可打开
+- [ ] `alice` 编辑自己的兴趣返回 200；编辑 `bob` 的兴趣返回 403
+- [ ] 新注册用户可创建自己的兴趣（表单无 `user_id`）；再次创建返回 403
+- [ ] `admin/admin` 可编辑任意用户的兴趣（`admin` 超级用户规则）
+- [ ] 兴趣视图没有删除入口；直接构造删除或批量删除请求不会删除记录
 - [ ] 修改/新增模型后，按第 0.4 节重建可丢弃的本地 demo 数据库并验证可用
 
 ### 11.3 冒烟测试片段（可选）
@@ -509,7 +577,11 @@ demo 目前没有自定义 CLI。若新增，在 `make_app.py` 的 `init_app(app
 在仓库根目录执行：
 
 ```python
+from sqlalchemy import select
+
 from examples.demo import create_app
+from examples.demo.models.user_interest import UserInterest
+from flask_exts.datastore.sqla import db
 
 app = create_app()
 app.config["CSRF_ENABLED"] = False
@@ -525,10 +597,27 @@ assert client.post(
 ).status_code == 302
 
 assert client.get("/admin/author/").status_code == 200
+
+alice = app.test_client()
+assert alice.post(
+    "/user/login/",
+    data={"username": "alice", "password": "alice"},
+).status_code == 302
+
+with app.app_context():
+    rows = db.session.scalars(select(UserInterest)).all()
+    alice_id = next(row.id for row in rows if row.user.username == "alice")
+    bob_id = next(row.id for row in rows if row.user.username == "bob")
+
+assert alice.get("/admin/interest/").status_code == 200
+assert alice.get(f"/admin/interest/edit/?id={alice_id}").status_code == 200
+assert alice.get(f"/admin/interest/edit/?id={bob_id}").status_code == 403
 print("demo smoke ok")
 ```
 
 > 该片段会读取现有 `demo.sqlite`；若 schema 过期，仅对可丢弃的本地 demo 数据库按第 0.4 节重置。CSRF 关闭仅用于脚本冒烟，不要用于生产配置。
+>
+> demo 启用 `SECURITY_AUTHORIZER = "rbac"` 后，`author` / `post` 等未声明要求的视图仍回落到 `admin` 角色规则，与默认配置一致；`InterestView` 额外声明了 `Authenticated()` 与 `Predicate`，按第 5.7 节验证。
 
 ### 11.4 提交前
 

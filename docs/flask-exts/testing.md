@@ -7,10 +7,10 @@
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 复跑 330 passed（新增边界、JWT `iat`、UTC 时间戳、TOTP flush 与默认视图回归用例）；2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`（匿名返回 403），新增校验与授权器回归用例后 338 passed；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后 389 passed；同日在共用登录门为 active `admin` 增加超级权限 394 passed |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 复跑 330 passed（新增边界、JWT `iat`、UTC 时间戳、TOTP flush 与默认视图回归用例）；2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`（匿名返回 403），新增校验与授权器回归用例后 338 passed；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后 389 passed；同日在共用登录门为 active `admin` 增加超级权限记录为 394 passed；2026-11-18 `0.5.0`（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`，本地标签未推送）全量复跑 **393 passed**，并以此为准；此前 394 的差异未复现 |
 > | 适用仓库 | `flask-exts` |
 >
-> **文档状态说明**：本文的测试目录与数量以 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
+> **文档状态说明**：本文的测试目录与数量以 2026-11-18 的 HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`（`0.5.0`）为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
 >
 > **使用方式**：修改代码前先对照 `requirements.md` 确认行为契约，再查相关架构/安全/领域约束；按变更设计测试并尽可能先验证失败，修改后运行实际可用的项目检查。缺陷修复优先复现并先写失败测试。本文中标记为目标的规划不代表已实现；当前 CI 实现范围见第 11 节。
 
@@ -83,11 +83,11 @@ uv run pytest -q tests/unit/forms/form/test_form.py
   - 说明：全部位于 `tests/unit/` 与 `tests/integration/`
 
 - **测试函数**
-  - 当前值：342 个
-  - 说明：以 `def test_...` 统计（2026-11-18 工作树；HEAD `1349295` 为 278 个）
+  - 当前值：341 个
+  - 说明：以 `def test_...` 统计（2026-11-18 `0.5.0`，HEAD `ca9f325`）
 
 - **断言**
-  - 当前值：约 1198 处
+  - 当前值：约 1197 处
   - 说明：按 `\bassert\b` 全文匹配统计（复现脚本见第 1.5 节），不含 `pytest.raises`
 
 - **测试框架**
@@ -136,7 +136,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.2 现有测试分布
 
-按 2026-11-18 工作树（HEAD `1349295` 加未提交差异）统计，各区域合计与第 1.1 节的 342 个测试函数一致。
+按 2026-11-18 `0.5.0`（HEAD `ca9f325`）统计，各区域合计与第 1.1 节的 341 个测试函数一致。
 
 - `integration/admin`
   - 测试函数数：57
@@ -169,7 +169,7 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖
 
 - `unit/security`
-  - 测试函数数：71
+  - 测试函数数：70
   - 主要文件：`tests/unit/security/test_authorizer.py`、`tests/unit/security/test_simple_authorizer.py`、`tests/unit/security/test_rbac_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py`
   - 评价：`test_authorizer.py` 覆盖基类 `check_view_access()`（含 active `admin` 直接放行与 inactive admin 不走捷径）、`requires_login()`、`allow_by_roles()` 与 `authorize()`；`test_simple_authorizer.py` 覆盖 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 方法级登录限制、非公开视图、`role_need` 与 `login_required_functions`；`test_rbac_authorizer.py` 覆盖 `Role`/`Permission`/`Predicate`/`All`/`Any`/`Not`/`Authenticated`、视图声明优先级、loader 优先级、查询 API、配置选择、共用登录门与既有规则兼容；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行
 
@@ -276,7 +276,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.5 数据快照与重新统计
 
-本文的 52 / 342 / 1198 已按 2026-11-18 工作树（HEAD `1349295` 加未提交差异）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 52 / 341 / 1197 已按 2026-11-18 `0.5.0`（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -3386,6 +3386,14 @@ show_missing = true
   - 函数覆盖：待测
   - 命令：`.venv/bin/python -m pytest -q`
   - 备注：394 passed、0 跳过；30.51s；Python 3.13.5；`ruff check` 与 `ruff format --check` 通过
+
+- **2026-11-18 · ca9f325（0.5.0）**
+  - commit：`ca9f325fa2d43f53eaf14ca71a77ee75b1471406`（`chore(release): v0.5.0`）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：393 passed、0 跳过；31.92s；Python 3.13.5；`ruff check`、`ruff format --check` 与 Sphinx `-W -n` 通过；与上一条 394 的差异未复现，以本轮 393 为准
 
 规则：
 

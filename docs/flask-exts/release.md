@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-14 |
-> | 数据快照 | 2026-11-13（依赖矩阵与测试结果；发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`）。2026-11-15 工作树包含 JWT 与浏览器安全变更，尚未提交或发布，见第 3.2 节。 |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；本地标签 `v0.5.0`，未推送；全量 `393 passed`） |
 > | 适用范围 | 本目录文档与工程发布评审 |
 >
 > 本文件是发布前门禁、兼容性策略、回滚条件与发布说明模板的唯一事实源；其他文档只引用，不复制。
@@ -20,17 +20,17 @@
   - 说明：适合设计、审查和协作基线
 
 - **工程代码**
-  - 版本/来源：版本文件 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；tag `v0.4.2`
-  - 状态：已提交、打标签并推送
-  - 说明：提交 `445b03d` 与标签 `v0.4.2` 已推送至 `origin`；`CHANGES.rst` 已记录 0.4.2；274 passed 基于该提交
+  - 版本/来源：版本文件 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；本地标签 `v0.5.0`
+  - 状态：已提交并本地打标签；**未推送**至 `origin`，未发布到 PyPI
+  - 说明：`0.5.0` 同时包含未发布的 `0.4.3` 变更；基于该提交全量实跑 393 passed；`dist/flask_exts-0.5.0-*` 已在本地构建
 
 - **发布执行**
-  - 版本/来源：`.github/workflows/release.yml` 由 tag `v0.4.2` 触发
-  - 状态：已推送并发布至 PyPI；workflow 运行记录待核实
-  - 说明：`origin` 已存在 `v0.4.2` 标签；PyPI JSON API 显示 `0.4.2` 的 wheel 与 sdist 已于 2026-11-12 上传；未查询 GitHub Actions 运行记录
+  - 版本/来源：`.github/workflows/release.yml` 由 tag `v*` 触发
+  - 状态：未触发
+  - 说明：`origin` 无 `v0.5.0` 标签；PyPI 最新版本仍为 `0.4.2`；未推送标签前不会构建或发布
 
 - **文档与实现关系**
-  - 版本/来源：本轮已按 HEAD 更新有证据支持的事实
+  - 版本/来源：本轮已按 HEAD `ca9f325` 更新有证据支持的事实
   - 状态：部分校准
   - 说明：未核对项仍标为待核实；文档不得覆盖源码事实
 
@@ -43,6 +43,30 @@
 - **优先契约闭环**：`requirements.md` 原建议顺序中的前 5 项核心契约（`REQ-AUTHZ-005`、`REQ-ADMIN-005`、`REQ-ADMIN-010`、`REQ-ADMIN-011`、`REQ-REG-006`）全部实测通过并经维护者正式批准。
 
 > 说明：文档版本与仓库版本应区分；若不一致，必须在发布前说明差异来源。
+
+### 1.2 0.5.0 发布内容与已知限制
+
+发布内容：
+
+- **新增**
+  - `RBACAuthorizer`：`Role` / `Permission` / `Predicate` requirement，可由 `All` / `Any` / `Not` 组合，并通过 `SECURITY_AUTHORIZER = "rbac"` 启用。
+  - `View.login_required_functions`：替代已移除的 `login_required` 装饰器，匿名访问受限方法返回 403。
+  - demo 的 `UserInterest` / `InterestView`：展示“登录用户读取全部、`Predicate` 限制只编辑本人记录”。
+- **变更**
+  - 时间戳统一为 UTC；分页、导出、默认视图、TOTP flush 等修复。
+  - `admin` 角色成为唯一内建超级用户，在共享登录门先于 requirement 放行。
+- **破坏性变更**
+  - 移除 `flask_exts.admin.login_required`，改用 `View.login_required_functions`。
+  - 未发布的 `0.4.3` 已包含 JWT 凭据绑定、算法/密钥收紧与安全 Cookie/响应头默认值；这些变更首次随 `0.5.0` 发布。
+
+已知限制（本版本未修复）：
+
+- `form_excluded_columns` 在自动脚手架下被忽略。
+  - 影响：依赖该选项隐藏外键或归属字段的表单仍会生成字段；用于安全隐藏时可能暴露或接受不应提交的值。
+  - 规避：显式设置 `form_columns`，只列出允许编辑的字段。
+- 对象级 requirement 只覆盖声明它的方法。
+  - 影响：`delete_view` / `edit_view` 的 `Predicate` 不会自动保护 `action_view`（批量操作）、`ajax_update`（内联编辑）或 `ajax_inline_model` 等入口。
+  - 规避：为每个写入口单独声明 requirement，或关闭对应能力（`can_delete`、`action_disallowed_list`、`column_editable_list`、`inline_models`）。
 
 ## 2. 版本维护规则
 
@@ -108,13 +132,25 @@
   - 实测验证状态：未建立浏览器 E2E
   - 生产建议与注意事项：后台依赖 Bootstrap 5 与现代 ES6 语法；不支持 IE11 或老旧内核
 
-> 快照：2026-11-11。实测值来自本地单一环境；发布版本 `0.4.1`（HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`）与 `0.4.2`（HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`）的 `pyproject.toml` 依赖声明一致：Python `>=3.11`、WTForms `>=3.3.2`、SQLAlchemy `>=2.1`、`cryptography>=46.0`。依赖下限变化后应重新测量；未列出的组合不能据此推断兼容。
+> 快照：2026-11-11。实测值来自本地单一环境；发布版本 `0.4.1`（HEAD `03006024d21167c0f6285a5724a3be5ef24d9a59`）、`0.4.2`（HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`）与 `0.5.0`（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`）的 `pyproject.toml` 依赖声明一致：Python `>=3.11`、WTForms `>=3.3.2`、SQLAlchemy `>=2.1`、`cryptography>=46.0`。依赖下限变化后应重新测量；未列出的组合不能据此推断兼容。
 >
 > 依赖基线的决策背景、备选方案与回滚方式见 [`architecture.md` ADR-004](./architecture.md#adr-004-依赖基线提升为-python-311-wtforms-33-sqlalchemy-21)；开发/主力 Python 版本的选择与提升时机见 [`architecture.md` ADR-005](./architecture.md#adr-005-开发与主力验证-python-版本锚定-debian-stable)。
 
-### 3.2 当前工作树待发布的高风险兼容性修改
+### 3.2 0.5.0 高风险兼容性修改
 
-以下修改在 2026-11-14 工作树完成，尚未提交或发布；发布前必须完成迁移说明、回归验证与回滚评估。
+以下修改已进入 `0.5.0`。JWT 与安全 Cookie 部分原本计划随 `0.4.3` 发布，但 `0.4.3` 从未打标签或发布，因此首次随 `0.5.0` 生效；升级前必须完成迁移说明、回归验证与回滚评估。
+
+- **移除 `login_required` 装饰器**
+  - 影响对象：使用 `flask_exts.admin.login_required` 装饰视图方法的应用
+  - 变更：该装饰器被移除；改用 `View.login_required_functions = ("method_name",)`，匿名访问受限方法返回 403，不再重定向到登录页
+  - 迁移：把装饰器替换为类属性，并确认前端按 403 处理
+  - 回滚：回退到 0.4.2，或恢复旧装饰器实现；不提供兼容分支
+
+- **admin 超级用户语义**
+  - 影响对象：依赖 `admin` 角色受视图 requirement 约束的部署
+  - 变更：已登录且 active 的 `admin` 在共享登录门直接放行，不再评估 `permission` / `permissions` / `Predicate`
+  - 迁移：需要限制管理员时，移除其 `admin` 角色或改用其他角色
+  - 回滚：回退 `Authorizer.check_view_access()` 的超级用户分支
 
 - **JWT 旧令牌不兼容**
   - 影响对象：已签发且不含 `pwd` 声明、或 TFA 用户不含 `otp` 声明的 Bearer token
@@ -166,6 +202,23 @@
 - [ ] 未执行或失败的检查是否列明原因、影响与责任人，并按严重度决定阻塞或书面风险接受
 
 未建立的 CI、未执行的 demo 或审查不等于通过；不能仅凭文档方案或 AI 自述签核。审查严重度见第 5 节，Critical 级问题绝对阻塞发布，不得通过风险接受绕过。
+
+### 4.1 0.5.0 本轮执行结果（2026-11-18）
+
+已执行：
+
+- `python -m pytest -q`：393 passed
+- 变更文件的 `ruff check` 与 `ruff format --check`：通过
+- `python -m sphinx -b html docs docs/_build/html -W -n --keep-going`：通过
+- `uv build`：生成 `dist/flask_exts-0.5.0-py3-none-any.whl` 与 `dist/flask_exts-0.5.0.tar.gz`，wheel 元数据版本为 `0.5.0`
+
+未执行：
+
+- 未推送 `main` 与 `v0.5.0` 标签；未触发 GitHub Actions，未发布到 PyPI
+- 未对现有 `examples/demo/demo.sqlite` 执行破坏性重建；demo 的 RBAC 路径使用临时数据库验证
+- 未运行 `djlint`；本版本未修改模板
+
+已知限制与风险接受见第 1.2 节与第 5 节。
 
 ## 5. 代码审查与缺陷严重度门禁
 
