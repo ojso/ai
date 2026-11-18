@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-16 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 已按本轮代码审查修复同步契约：JWT 解码强制 `iat`、令牌未知 serializer 默认 30 分钟、负 `page`/`offset` 夹到 0、列表页码链接修复、用户与锁定时间统一 UTC；全量实跑 330 passed，尚未发布 |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 已按本轮代码审查修复同步契约：JWT 解码强制 `iat`、令牌未知 serializer 默认 30 分钟、负 `page`/`offset` 夹到 0、列表页码链接修复、用户与锁定时间统一 UTC；全量实跑 330 passed，尚未发布。2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`，受限方法对匿名请求返回 403；全量实跑 338 passed。2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后全量实跑 389 passed。2026-11-18 新增并批准 `REQ-AUTHZ-007`～`REQ-AUTHZ-009`，记录 RBAC requirement 模型、视图声明与授权器选择；同日按用户要求在共用登录门 `Authorizer.check_view_access()` 为 active `admin` 增加超级权限，全量实跑 394 passed |
 > | 适用仓库 | `flask-exts` |
 >
 > **使用规则**：
@@ -21,8 +21,8 @@
 
 派生数据，由 `check_docs.py` 只读核验；判定标准、`passed` 的证明范围与免责见第 2.2 节。
 
-- **契约总数**：55 条（活跃 53 条）
-- **已批准且验证通过（approved + passed）**：37 条
+- **契约总数**：58 条（活跃 56 条）
+- **已批准且验证通过（approved + passed）**：40 条
 - **未取证（默认 unknown / unverified）**：16 条
 - **已停用（superseded / deprecated）**：2 条
 
@@ -160,6 +160,9 @@ REQ-<领域>-<序号>
 - **单独批准**：2026-11-14，`REQ-SEC-001`（安全 Cookie 与响应头默认值）；依据为当日工作树全量实跑（HEAD `445b03d` 加未提交差异，Python 3.13.5，311 passed）；批准人 d.hua
 - **重新批准**：2026-11-16，`REQ-AUTH-013`（JWT 解码新增 `iat` 必填）；依据为提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 的全量实跑（Python 3.13.5，330 passed），基线登记见 `testing.md` 第 10.5 节 2026-11-16 行；批准人 d.hua
 - **重新批准**：2026-11-16，`REQ-TOKEN-002`（未知 serializer 默认 1800 秒）；依据同上；批准人 d.hua
+- **重新批准**：2026-11-17，`REQ-AUTH-010`（登录受限端点的匿名响应改为 403）；依据为 2026-11-17 工作树全量实跑（Python 3.13.5，338 passed），基线登记见 `testing.md` 第 10.5 节 2026-11-17 行；批准人 d.hua
+- **重新批准**：2026-11-17，`REQ-VIEW-001`（登录要求改用 `login_required_functions`）；依据同上；批准人 d.hua
+- **单独批准**：2026-11-18，`REQ-AUTHZ-007`～`REQ-AUTHZ-009`（RBAC requirement 模型、视图声明/身份数据/查询 API、授权器选择与既有规则兼容）；依据为 2026-11-18 工作树全量实跑（HEAD `1349295` 加未提交差异，Python 3.13.5，389 passed），基线登记见 `testing.md` 第 10.5 节 2026-11-18 行；批准人 d.hua
 
 后续若出现单独批准或重新批准，应在该条目 `lifecycle` 的括号内注明日期与差异，并在本节追加一条。批准记录不得由 AI 代填。
 
@@ -373,7 +376,7 @@ REQ-<领域>-<序号>
 - **lifecycle**：`superseded`（2026-11-12；`requires_active` 装饰器与授权器分支已移除）
 - **superseded-by**：`REQ-AUTH-010`
 - **历史行为**：`@requires_active` 在授权器层拒绝 `is_active=False` 的用户，用于保护 `allow_access=True` 视图中的账号功能。
-- **现行机制**：禁用账号无法登录（`REQ-AUTH-009`），既有会话由 `user_loader` 失效（`REQ-AUTH-010`），账号功能只需 `@login_required`。
+- **现行机制**：禁用账号无法登录（`REQ-AUTH-009`），既有会话由 `user_loader` 失效（`REQ-AUTH-010`），账号功能通过在 `UserView.login_required_functions` 中列出方法名保护。
 - **关联**：`security.md` 4.4
 
 ### REQ-AUTH-008 安全重定向
@@ -406,13 +409,13 @@ REQ-<领域>-<序号>
 
 ### REQ-AUTH-010 禁用账号的既有会话立即失效
 
-- **lifecycle**：`approved`
-- **implementation**：`implemented`（HEAD `445b03d` 静态核对，行为与下列验收入口一致）
-- **verification**：`passed`（2026-11-13 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节）
+- **lifecycle**：`approved`（2026-11-17 重新批准，变更范围：登录受限端点的匿名响应由登录重定向改为 403）
+- **implementation**：`implemented`（HEAD `445b03d` 静态核对；2026-11-17 工作树将登录要求改为 `login_required_functions`）
+- **verification**：`passed`（2026-11-17 实跑：HEAD `1349295` 加未提交工作树差异，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-17 行）
 - **前置**：用户已登录并持有有效会话，随后被设置为 `is_active=False`
 - **输入**：携带旧会话 Cookie 的任意请求
 - **行为**：`user_loader` 返回 `None`，清除 session 中的 `_user_id`，并标记清除 remember-me Cookie
-- **输出/副作用**：`current_user` 变为匿名；受 `@login_required` 保护的页面重定向登录；重新启用账号后旧 Cookie 仍然无效，必须重新登录
+- **输出/副作用**：`current_user` 变为匿名；受 `login_required_functions` 保护的页面返回 403（不再重定向登录）；重新启用账号后旧 Cookie 仍然无效，必须重新登录
 - **错误**：不抛异常；旧会话按匿名处理
 - **不变量**：禁用在下一次请求即生效，不依赖任何视图级装饰器
 - **验收**：`testing.md` TC-AUTH-020；`tests/integration/usercenter/test_user_view.py::test_disabling_account_invalidates_existing_session`
@@ -472,44 +475,44 @@ REQ-<领域>-<序号>
 - **行为**：`SimpleAuthorizer` 放行
 - **输出/副作用**：视图可渲染
 - **错误**：无
-- **不变量**：非 admin/非 super_admin 默认拒绝
-- **验收**：`testing.md` TC-SEC-012；`tests/unit/security/test_authorizer.py::test_allow_admin_user`
+- **不变量**：非 admin 用户默认拒绝
+- **验收**：`testing.md` TC-SEC-012；`tests/unit/security/test_simple_authorizer.py::test_allow_admin_user`
 - **关联**：`security.md` 4.2
 
 ### REQ-AUTHZ-002 默认拒绝与匿名访问
 
 - **前置**：无认证或用户无角色
 - **输入**：访问普通 Admin/ModelView
-- **行为**：匿名 ModelView 返回 403；`@login_required` 先重定向登录；无角色普通用户拒绝
-- **输出/副作用**：403 或登录重定向
+- **行为**：匿名访问非公开视图返回 403（先要求登录）；`allow_access=True` 时，`login_required_functions` 中的方法对匿名请求同样返回 403，未列出的方法放行；已登录且 `is_active=True` 且 `get_roles()` 含 `admin` 的用户在 `check_view_access()` 直接放行，不进入后续 requirement；无角色普通用户拒绝
+- **输出/副作用**：403
 - **错误**：默认拒绝
 - **不变量**：未授权用户不能访问 Admin 模型数据
-- **验收**：`testing.md` TC-ADMIN-025/TC-ADMIN-026、TC-SEC-013；`test_authorizer.py`
+- **验收**：`testing.md` TC-ADMIN-025/TC-ADMIN-026、TC-SEC-013；`tests/unit/security/test_simple_authorizer.py::test_non_public_view_requires_authentication`、`tests/unit/security/test_rbac_authorizer.py::test_non_public_view_requires_authentication`、`tests/unit/security/test_simple_authorizer.py::test_view_less_check_falls_back_to_roles`、`tests/unit/security/test_authorizer.py::test_admin_role_passes_the_shared_gate`、`test_inactive_admin_does_not_use_the_superuser_shortcut`、`tests/integration/usercenter/test_user_view.py::test_login_required_functions_deny_anonymous_before_allow_access`
 - **关联**：`security.md` 4.2/4.5
 
 ### REQ-AUTHZ-003 allow_access 公开视图
 
 - **前置**：视图设置 `allow_access=True`
 - **输入**：匿名/已登录请求
-- **行为**：允许访问；不再要求 admin/super_admin；禁用账号已在登录/会话阶段被拒绝（`REQ-AUTH-009`、`REQ-AUTH-010`）
-- **输出/副作用**：公开页面可访问
-- **错误**：无
+- **行为**：未列入 `login_required_functions` 的方法允许匿名访问；不再要求 admin 角色；禁用账号已在登录/会话阶段被拒绝（`REQ-AUTH-009`、`REQ-AUTH-010`）。例外：`login_required_functions` 中列出的方法对匿名请求仍拒绝（403）
+- **输出/副作用**：公开页面可访问；登录受限方法返回 403
+- **错误**：登录受限方法对匿名请求返回 403
 - **不变量**：公开视图不能泄露受保护数据
-- **验收**：`testing.md` TC-SEC-014；`test_authorizer.py::test_view_allow_access_precedes_authentication_gates`
+- **验收**：`testing.md` TC-SEC-014；`tests/unit/security/test_simple_authorizer.py::test_view_allow_access_precedes_authentication_gates`、`test_login_required_function_denies_anonymous_despite_allow_access`、`test_login_required_function_allows_authenticated_user`、`tests/unit/security/test_authorizer.py::test_public_view_allows_anonymous_unlisted_method`、`tests/unit/security/test_rbac_authorizer.py::test_allow_access_precedes_everything`、`test_login_required_functions_deny_anonymous_before_requirements`、`test_public_view_allows_anonymous_unlisted_method`
 - **关联**：`security.md` 4.2
 
 ### REQ-AUTHZ-004 requires_active 保护账号功能（已废弃）
 
 - **lifecycle**：`deprecated`（2026-11-12；装饰器与授权器分支已移除，无替代契约）
 - **历史行为**：`@requires_active` 标记 `allow_access=True` 视图中的账号功能，拒绝 `is_active=False` 的用户。
-- **现行机制**：禁用账号在登录与 `user_loader` 阶段即被拒绝（`REQ-AUTH-009`、`REQ-AUTH-010`），账号功能只需 `@login_required`。
+- **现行机制**：禁用账号在登录与 `user_loader` 阶段即被拒绝（`REQ-AUTH-009`、`REQ-AUTH-010`），账号功能通过 `login_required_functions` 声明。
 - **关联**：`security.md` 4.4
 
 ### REQ-AUTHZ-005 禁用 admin 必须失去 Admin 权限
 
 - **lifecycle**：`approved`
-- **implementation**：`implemented`（`SimpleAuthorizer.allow` 在 `admin` 角色判断前执行 `is_active` 检查）
-- **verification**：`passed`（`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied`；执行证据见 `testing.md` 第 10.5 节 2026-11-13 行（HEAD `445b03d`））
+- **implementation**：`implemented`（`check_view_access()` 的 admin 捷径要求 `is_active=True`；`SimpleAuthorizer` 与 `RBACAuthorizer` 在角色或 requirement 判定前执行 `is_active` 检查）
+- **verification**：`passed`（2026-11-18 实跑：HEAD `1349295` 加未提交工作树差异，`tests/unit/security/test_simple_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied` 均通过；基线登记见 `testing.md` 第 10.5 节 2026-11-18（admin 登录门超级权限）行）
 - **前置**：用户有 `admin` 角色且 `is_active=False`
 - **输入**：访问 Admin/账号功能
 - **行为**：**必须拒绝**；禁用账号不能继续使用高权限
@@ -517,19 +520,61 @@ REQ-<领域>-<序号>
 - **错误**：拒绝
 - **不变量**：`is_active=False` 必须覆盖 `admin` 角色
 - **本轮实现观察**：`admin + is_active=False` 访问 Admin 视图返回 403；active admin 仍可访问；公开 `allow_access` 视图行为不变。
-- **验收**：`testing.md` TC-SEC-022；`tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user`、`tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`
+- **验收**：`testing.md` TC-SEC-022；`tests/unit/security/test_simple_authorizer.py::test_deny_inactive_admin_user`、`tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`
 - **关联**：`security.md` 4.3；`spec.md` 第 7 章；`SEC-01`（已在 0.4.2 修复）
 
-### REQ-AUTHZ-006 role_need 与 super_admin
+### REQ-AUTHZ-006 role_need 回退
 
-- **前置**：用户 active
-- **输入**：`role_need` 或 `super_admin` 角色
-- **行为**：`role_need` 匹配放行；`super_admin` 放行；inactive 的非 admin 用户拒绝
+- **前置**：用户已登录；可选传入 `role_need`
+- **输入**：`role_need` 或 `admin` 角色
+- **行为**：`role_need` 匹配放行；`admin` 角色直接放行；inactive 用户一律拒绝（包括 `admin`）
 - **输出/副作用**：允许/拒绝
 - **错误**：无匹配时拒绝
-- **不变量**：inactive 用户不能靠 `role_need`/`super_admin` 绕过 active 检查
-- **验收**：`testing.md` TC-SEC-013；`test_authorizer.py::test_authorize_without_view_uses_permission_context`
+- **不变量**：inactive 用户不能靠 `role_need` 绕过 active 检查
+- **验收**：`testing.md` TC-SEC-013；`tests/unit/security/test_simple_authorizer.py::test_authorize_without_view_uses_permission_context`、`test_view_less_check_falls_back_to_roles`、`tests/unit/security/test_rbac_authorizer.py::test_missing_view_falls_back_to_admin_only`、`tests/unit/security/test_authorizer`
 - **关联**：`security.md` 4.2
+
+### REQ-AUTHZ-007 RBAC requirement 组合判定
+
+- **lifecycle**：`approved`（2026-11-18 单独批准，RBAC 能力）
+- **implementation**：`implemented`（`RBACAuthorizer` 与 requirement 类型在工作树中实现）
+- **verification**：`passed`（2026-11-18 实跑：HEAD `1349295` 加未提交工作树差异，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-18（admin 登录门超级权限）行）
+- **前置**：已选择 `RBACAuthorizer`；`BuildContext` 已加载用户的 roles/permissions
+- **输入**：`Role`、`Permission`、`Predicate`、`All`、`Any`、`Not`、`Authenticated` 或其组合
+- **行为**：`Role` 默认任一角色匹配，`match="all"` 时要求全部；`Permission` 默认全部权限匹配，`match="any"` 时任一即可；`Predicate` 调用传入 callable 并以其返回值判定；`All`/`Any`/`Not` 分别执行全部、任一、全否组合；`&`/`|` 等价于 `All`/`Any`；`Authenticated` 要求 `is_authenticated` 为真
+- **输出/副作用**：requirement 的 `check()` 返回 `bool`；只读取上下文，不修改 roles/permissions
+- **错误**：`Role()`/`Permission()` 无参数、未知 `match` 抛 `ValueError`；`Predicate` 收到非 callable 抛 `TypeError`
+- **不变量**：requirement 不能绕过登录门或 `is_active` 检查；空集合按失败处理
+- **验收**：`testing.md` TC-SEC-023；`tests/unit/security/test_rbac_authorizer.py::test_single_role`、`test_all_match_requires_every_role`、`test_all_match_is_the_default`、`test_any_match`、`test_receives_kwargs_and_pstore`、`test_operators_build_composites`、`test_authenticated`、`test_empty_role_set_is_rejected`、`test_non_callable_is_rejected`
+- **关联**：`security.md` 4.6.1
+
+### REQ-AUTHZ-008 RBAC 视图声明、身份数据与查询 API
+
+- **lifecycle**：`approved`（2026-11-18 单独批准，RBAC 能力）
+- **implementation**：`implemented`（视图声明解析、loader 与查询辅助方法在工作树中实现）
+- **verification**：`passed`（2026-11-18 实跑：HEAD `1349295` 加未提交工作树差异，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-18（admin 登录门超级权限）行）
+- **前置**：视图可声明 `permission`、`permissions`、`roles`
+- **输入**：视图类属性、可选的 `fn`、`role_loader`/`permission_loader`/`user_data_loader`、用户对象
+- **行为**：按 `permissions[fn.__name__]` → `permission` → `roles` 的顺序解析；字符串声明等价于 `Role`；身份数据按 `user_data_loader` → 独立 loader → `get_roles()`/`get_permissions()` 的顺序加载；`can`、`has_role`、`has_permission`、`build_context` 提供查询能力
+- **输出/副作用**：命中的 requirement 返回 `bool`；loader 与用户 getter 只被读取
+- **错误**：不支持的声明类型抛 `TypeError`；没有 getter 且没有 loader 时 roles/permissions 为空集合并拒绝
+- **不变量**：方法级声明优先于视图级声明；loader 返回值不来自不可信请求数据；查询辅助方法不替代路由登录门与 `is_active` 检查
+- **验收**：`testing.md` TC-SEC-024；`tests/unit/security/test_rbac_authorizer.py::test_permission_attribute`、`test_function_entry_overrides_view_default`、`test_string_shorthand_means_role`、`test_unsupported_declaration_is_rejected`、`test_role_and_permission_loaders_are_used`、`test_user_data_loader_takes_precedence`、`test_user_without_getters_has_nothing`、`test_can_with_multiple_requirements`、`test_has_role_and_permission`
+- **关联**：`security.md` 4.6.2/4.6.3
+
+### REQ-AUTHZ-009 RBAC 授权器选择与既有规则兼容
+
+- **lifecycle**：`approved`（2026-11-18 单独批准，RBAC 能力）
+- **implementation**：`implemented`（`Registry` 选择逻辑与 `RBACAuthorizer.allow()` 在工作树中实现）
+- **verification**：`passed`（2026-11-18 实跑：HEAD `1349295` 加未提交工作树差异，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-18（admin 登录门超级权限）行）
+- **前置**：应用初始化安全扩展
+- **输入**：`SECURITY_AUTHORIZER` 配置、视图 `allow_access` 与 requirement、用户登录/激活状态
+- **行为**：配置 `"simple"` 或未配置时使用 `SimpleAuthorizer`，配置 `"rbac"` 时使用 `RBACAuthorizer`；RBAC 先执行共用登录门，公开视图直接放行，非公开视图拒绝匿名与 inactive 用户，随后执行 requirement；未声明 requirement 或 `view` 为空时回退 `allow_by_roles()`
+- **输出/副作用**：允许时返回 `True`，拒绝时返回 `False`（视图默认 403）
+- **错误**：未知 `SECURITY_AUTHORIZER` 值抛 `ValueError`
+- **不变量**：RBAC 不削弱 `is_active`、`login_required_functions` 或默认拒绝；公开视图不执行 requirement；`admin`/`role_need` 回退保持兼容；active `admin` 在共用登录门直接放行
+- **验收**：`testing.md` TC-SEC-025；`tests/unit/security/test_rbac_authorizer.py::test_allow_access_precedes_everything`、`test_inactive_user_denied_even_when_requirement_passes`、`test_undeclared_view_falls_back_to_admin_only`、`test_missing_view_falls_back_to_admin_only`、`test_admin_role_passes_before_permission_requirements`、`test_default_is_simple_authorizer`、`test_rbac_is_selected_by_config`、`test_unknown_name_is_rejected`
+- **关联**：`security.md` 4.6.4；`REQ-AUTHZ-002`/`REQ-AUTHZ-003`/`REQ-AUTHZ-005`/`REQ-AUTHZ-006`
 
 ## 7. 注册与邮箱验证
 
@@ -572,7 +617,7 @@ REQ-<领域>-<序号>
 - **输出/副作用**：用户邮箱状态更新
 - **错误**：过期/无效/用户不存在分别返回错误状态
 - **不变量**：验证邮箱不改变账号 active 状态
-- **验收**：`testing.md` TC-SEC-008；实测入口为 `tests/integration/security/test_core.py::TestSecurityCore.test_verify_email`（断言返回 `verified`、标记 `email_verified=True` 且保持 `is_active=True`，无效令牌抛 `InvalidTokenError`）；HTTP 路由级过期边界待补自动化用例。
+- **验收**：`testing.md` TC-SEC-008；实测入口为 `tests/integration/security/test_core.py::TestSecurity.test_verify_email`（断言返回 `verified`、标记 `email_verified=True` 且保持 `is_active=True`，无效令牌抛 `InvalidTokenError`）；HTTP 路由级过期边界待补自动化用例。
 - **关联**：`security.md` 6.3
 
 ### REQ-REG-004 重发验证邮件
@@ -642,7 +687,7 @@ REQ-<领域>-<序号>
 - **输出/副作用**：密码更新；旧密码失效
 - **错误**：过期/无效/未验证/缺少密码分别拒绝
 - **不变量**：未验证邮箱不能重置；令牌不可跨密码/邮箱变化复用
-- **验收**：`testing.md` TC-SEC-010；实测入口为 `tests/integration/security/test_core.py::TestSecurityCore.test_verify_email`（插件级重置密码与二次使用抛 `InvalidTokenError`）与 `tests/integration/usercenter/test_user_view.py::TestUserView.test_forgot_password`（端到端表单提交）；HTTP 级令牌过期场景待补用例。
+- **验收**：`testing.md` TC-SEC-010；实测入口为 `tests/integration/security/test_core.py::TestSecurity.test_verify_email`（插件级重置密码与二次使用抛 `InvalidTokenError`）与 `tests/integration/usercenter/test_user_view.py::TestUserView.test_forgot_password`（端到端表单提交）；HTTP 级令牌过期场景待补用例。
 - **关联**：`security.md` 6.5
 
 ### REQ-RESET-003 重置后旧密码/旧令牌/旧会话失效
@@ -914,24 +959,24 @@ REQ-<领域>-<序号>
 
 ### REQ-VIEW-001 自定义页面与模板
 
-- **lifecycle**：`approved`
-- **implementation**：`implemented`（HEAD `445b03d` 静态核对，行为与下列验收入口一致）
-- **verification**：`passed`（2026-11-13 实跑：HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节）
+- **lifecycle**：`approved`（2026-11-17 重新批准，变更范围：登录要求改用 `login_required_functions`，匿名响应为 403）
+- **implementation**：`implemented`（HEAD `445b03d` 静态核对；2026-11-17 工作树改用 `login_required_functions`）
+- **verification**：`passed`（2026-11-17 实跑：HEAD `1349295` 加未提交工作树差异，Python 3.13.5，本契约验收入口全部通过，基线登记见 `testing.md` 第 10.5 节 2026-11-17 行）
 - **前置**：自定义 `View` 或 `list_template`
-- **输入**：`expose_url`、`allow_access`、`login_required`
+- **输入**：`expose_url`、`allow_access`、`login_required_functions`
 - **行为**：路由可访问；`render`/`render_string` 渲染；模板可 `extends` 内置模板并传自定义参数
 - **输出/副作用**：HTML 响应
-- **错误**：未授权 403/登录重定向
+- **错误**：未授权 403（`login_required_functions` 不再重定向登录）
 - **不变量**：模板覆盖不丢失列表/分页/筛选 UI
-- **验收**：`demo.md` TreeView；`tests/unit/admin/test_view.py::test_view` 仅覆盖 `View` 暴露的路由与端点元数据，未断言真实模板覆盖渲染（测试缺口，待补自动化用例）。
+- **验收**：`demo.md` TreeView；`tests/unit/admin/test_view.py::test_view`、`test_login_required_functions_are_kept_on_the_view`、`test_login_required_functions_must_be_exposed`、`test_login_required_functions_reject_a_bare_string`；未断言真实模板覆盖渲染（测试缺口，待补自动化用例）。
 - **关联**：`spec.md` 10.14
 
 ## 12. 当前待办与测试缺口
 
 原 0.4.1 快照中的前 5 项高优先级契约（`REQ-AUTHZ-005`、`REQ-ADMIN-005`、`REQ-ADMIN-010`、`REQ-ADMIN-011`、`REQ-REG-006`）已全部在 0.4.2 实测通过并获得维护者批准（记录见各条目及 `release.md`）。当前真正未闭环的待办项如下：
 
-1. **测试入口补全（14 条待核实契约）**：
-   `REQ-ADMIN-001`～`REQ-ADMIN-004`、`REQ-ADMIN-006`、`REQ-ADMIN-009`、`REQ-ADMIN-012`、`REQ-AUTHZ-002`、`REQ-AUTHZ-003`、`REQ-AUTHZ-006`、`REQ-REG-005`、`REQ-TOKEN-001`、`REQ-TOKEN-003`、`REQ-TOKEN-004`。需在“验收”字段补齐具体测试文件与函数入口，补齐后由 `check_docs.py` 仓库交叉检查接管。
+1. **测试入口补全（11 条待核实契约）**：
+   `REQ-ADMIN-001`～`REQ-ADMIN-004`、`REQ-ADMIN-006`、`REQ-ADMIN-009`、`REQ-ADMIN-012`、`REQ-REG-005`、`REQ-TOKEN-001`、`REQ-TOKEN-003`、`REQ-TOKEN-004`。需在“验收”字段补齐具体测试文件与函数入口，补齐后由 `check_docs.py` 仓库交叉检查接管。
 2. **`CR-001` 缺陷相关契约**：
    `REQ-ADMIN-007`、`REQ-ADMIN-008`：在修复 `create_ajax_loader` 签名不匹配后，需在 `tests/integration/admin/sqla/test_inline_ajax.py` 补充为子模型配置 `ajax_refs` 的专项用例。
 3. **边界与异常路径自动化测试**：

@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-16 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-15 工作树已修复 SEC-02/SEC-08/SEC-12，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；SEC-12 补充 Cookie 默认值开关、显式 `SameSite=None` 与 `ProxyFix` 场景；尚未提交或发布。2026-11-16 提交 `1349295` 补充 JWT 解码强制 `iat`、CSRF session token 改用 `secrets.token_urlsafe(32)`、TOTP secret 改为 flush 加服务层提交、未知 serializer 默认 30 分钟，以及用户/锁定时间统一 UTC；代码已提交，尚未发布。 |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-15 工作树已修复 SEC-02/SEC-08/SEC-12，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；SEC-12 补充 Cookie 默认值开关、显式 `SameSite=None` 与 `ProxyFix` 场景；尚未提交或发布。2026-11-16 提交 `1349295` 补充 JWT 解码强制 `iat`、CSRF session token 改用 `secrets.token_urlsafe(32)`、TOTP secret 改为 flush 加服务层提交、未知 serializer 默认 30 分钟，以及用户/锁定时间统一 UTC；代码已提交，尚未发布。2026-11-17 工作树以 `View.login_required_functions` 取代 `login_required` 装饰器，匿名访问受限方法返回 403。2026-11-18 登录门抽到 `Authorizer.check_view_access()`，`SimpleAuthorizer` 与 `RBACAuthorizer` 共用；新增 `RBACAuthorizer` requirement 模型、视图声明、loader 与授权器选择说明。 |
 > | 适用仓库 | `flask-exts` |
 >
 > **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。
@@ -62,7 +62,7 @@
 本文覆盖：
 
 - 用户认证、登录会话、登出、密码修改
-- 授权（admin、`super_admin`、`role_need`、公开视图、激活状态）
+- 授权（admin、`role_need`、公开视图、激活状态）
 - 密码哈希与密码策略
 - 邮箱验证、改邮箱、找回密码令牌
 - CSRF
@@ -371,54 +371,97 @@ app.config.update(
 ```text
 View 方法
   └─ ViewMeta 包装
-       ├─ 若标记 @login_required 且未登录 → 交给 Flask-Login（重定向登录）
        └─ self.allow(...)
             └─ Admin.allow / current_security.authorize_allow(...)
-                 └─ SimpleAuthorizer.authorize(...)
+                 └─ Authorizer.allow(...)
+                      ├─ 已登录且 active 的 admin：直接放行
+                      ├─ allow_access=True：只查 login_required_functions
+                      │    └─ 匿名 + 方法已列出 → 拒绝（403）
+                      ├─ allow_access=False：未登录 → 拒绝
+                      └─ 其他已登录用户：is_active、requirement 或 role_need
 ```
 
-### 4.2 `SimpleAuthorizer` 判定顺序
+### 4.2 共用登录门与判定顺序
 
-当前实现按以下顺序返回：
+登录门定义在基类 `Authorizer.check_view_access()`，`SimpleAuthorizer` 与 `RBACAuthorizer` 都必须先调用它，再执行各自的角色回退或 requirement 判定；不得在子类重复实现：
+
+```python
+def check_view_access(self, user, view, fn=None):
+    if view is None:
+        return None
+
+    authenticated = bool(getattr(user, "is_authenticated", False))
+
+    if authenticated and getattr(user, "is_active", True):
+        get_roles = getattr(user, "get_roles", None)
+        if callable(get_roles) and "admin" in get_roles():
+            # admin 是超级用户：直接放行，不执行 requirement
+            return True
+
+    if getattr(view, "allow_access", False):
+        # 公开视图：只拦截 login_required_functions 中列出的方法
+        return not (self.requires_login(view, fn) and not authenticated)
+
+    # 非公开视图：所有方法都要求已登录
+    return None if authenticated else False
+```
+
+返回值为三态：
+
+- `False`：拒绝，调用方直接返回 `False`（403）。
+- `True`：active `admin` 或公开视图放行，无需再查角色或 requirement。
+- `None`：没有视图级结论，调用方继续自己的判定。
+
+`SimpleAuthorizer` 在登录门之后只剩角色回退：
 
 ```python
 def allow(self, *args, **kwargs):
     user = kwargs.get("user")
-    view = kwargs.get("view")
+    decision = self.check_view_access(user, kwargs.get("view"), kwargs.get("fn"))
+    if decision is not None:
+        return decision
 
-    # 1. allow_access 公开视图 → 放行
-    if view is not None and getattr(view, "allow_access", False):
-        return True
-
-    # 2. 非激活 → 拒绝（管理员角色也不例外）
-    if not getattr(user, "is_active", True):
-        return False
-
-    # 3. admin 角色 → 放行
-    if hasattr(user, "get_roles") and "admin" in user.get_roles():
-        return True
-
-    # 4. role_need 匹配 → 放行
-    if "role_need" in kwargs and hasattr(user, "get_roles") and kwargs["role_need"] in user.get_roles():
-        return True
-
-    # 5. super_admin → 放行
-    return bool(hasattr(user, "get_roles") and "super_admin" in user.get_roles())
+    # 无视图：跳过视图级判定，按角色回退（API 用法）
+    return self.allow_by_roles(**{**kwargs, "user": user})
 ```
+
+`RBACAuthorizer` 在登录门之后依次检查 `is_active`、视图声明的 requirement，最后回退到 `allow_by_roles()`；`allow_access=True` 的公开视图同样在登录门处直接放行，不进入 requirement 判定。
+
+`allow_by_roles()` 按顺序判定：
+
+```python
+if not getattr(user, "is_active", True):
+    return False
+if "admin" in user.get_roles():
+    return True
+if "role_need" in kwargs and kwargs["role_need"] in user.get_roles():
+    return True
+return False
+```
+
+`admin` 是共用登录门的超级用户：已登录且 active 的 `admin` 在 `check_view_access()` 中直接返回 `True`，不进入任何 authorizer 的 requirement 判定；inactive 的 `admin` 不走该捷径，仍由后续 `is_active` 检查拒绝。`role_need` 回退保持原样。该捷径只读取用户对象的 `get_roles()`；`role_loader`、`permission_loader`、`user_data_loader` 与 `Predicate` 不参与该判断，也不会因 admin 获得额外处理。
 
 ### 4.3 判定结果与风险
 
 - **匿名 + 普通视图（`allow_access=False`）**
   - 结果：拒绝 → 403
-  - 说明：Admin 模型视图默认行为
+  - 说明：非公开视图先要求登录，再执行角色判定；默认拒绝
 
-- **匿名 + `@login_required`**
-  - 结果：重定向登录
-  - 说明：`login_required` 在 `allow` 之前处理
-
-- **匿名 + `allow_access=True`**
+- **匿名 + 公开视图（`allow_access=True`）**
   - 结果：放行
-  - 说明：公开登录/注册/门户
+  - 说明：登录/注册/门户等公开端点；若方法列入 `login_required_functions`，则拒绝 → 403
+
+- **匿名 + `login_required_functions` 中的方法**
+  - 结果：拒绝 → 403
+  - 说明：只在 `allow_access=True` 的视图上有意义；不再重定向登录
+
+- **已登录 + 公开视图**
+  - 结果：放行
+  - 说明：公开视图不要求角色
+
+- **view 为空**
+  - 结果：不做视图级登录/公开判定，按 `is_active` 与角色规则回退
+  - 说明：`View.allow()` 总会传入 view；该分支仅用于直接调用 `authorize_allow()` 的 API 场景
 
 - **普通用户 + 无角色**
   - 结果：拒绝
@@ -428,14 +471,6 @@ def allow(self, *args, **kwargs):
   - 结果：放行
   - 说明：需 active
 
-- `super_admin` + active
-  - 结果：放行
-  - 说明：active 检查在最后一步之前
-
-- `super_admin` + inactive
-  - 结果：拒绝
-  - 说明：会先被 active 检查拦截
-
 - **`admin` + inactive**
   - 结果：**拒绝**
   - 说明：先检查 `is_active`，再判断 `admin`
@@ -444,19 +479,32 @@ def allow(self, *args, **kwargs):
   - 结果：放行
   - 说明：高权限，需重点保护
 
-**SEC-01（高，已在 0.4.2 修复）**：`0.4.2` 已把 `is_active` 检查移到 `admin` 角色判断之前；`is_active=False` 的管理员访问 Admin 返回 403，公开 `allow_access` 视图行为不变。回归测试见 `tests/unit/security/test_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`。
+- `admin` + `Permission` requirement（active）
+  - 结果：放行
+  - 说明：在共用登录门直接放行，不执行 requirement
+
+- 非 `admin` 用户 + 缺少声明的权限
+  - 结果：拒绝
+  - 说明：`Permission` 按已加载的权限名判定
+
+**SEC-01（高，已在 0.4.2 修复）**：`0.4.2` 已把 `is_active` 检查移到 `admin` 角色判断之前；`is_active=False` 的管理员访问 Admin 返回 403，公开 `allow_access` 视图行为不变。回归测试见 `tests/unit/security/test_simple_authorizer.py::test_deny_inactive_admin_user` 与 `tests/integration/admin/test_admin.py::test_inactive_admin_is_denied`。
 
 对已发布的 0.4.1 及更早版本，仍需按第 0.3 节执行临时阻断：禁用管理员时**同时移除 admin 角色**或删除账号。
 
 ### 4.4 公开视图与禁用账号
 
-`UserView.allow_access = True` 让登录/注册等公开端点可匿名访问；账号功能使用 `@login_required`：
+`UserView.allow_access = True` 让登录/注册等公开端点可匿名访问；账号功能通过 `login_required_functions` 声明：
 
 ```python
-@login_required
-@expose_url("/change_password/", methods=("GET", "POST"))
-def change_password(self): ...
+class UserView(View):
+    allow_access = True
+    login_required_functions = ("profile", "change_password", ...)
+
+    @expose_url("/change_password/", methods=("GET", "POST"))
+    def change_password(self): ...
 ```
+
+匿名请求这些方法时授权器直接拒绝，视图返回 403。`allow_access = False` 的视图不需要声明；所有方法本来就要求登录。`login_required_functions` 只接受已用 `expose_url` 暴露的方法名；未知名称在视图实例化时抛 `ValueError`，避免拼写错误导致静默放行。
 
 `is_active=False` 的账号无法登录（`REQ-AUTH-009`），既有会话在下一次请求由 `user_loader` 失效（`REQ-AUTH-010`），因此授权器不会收到已认证的禁用用户。未验证邮箱（`email_verified=False`）的账号本身是 active，可登录并使用资料页重发验证邮件。
 
@@ -466,9 +514,100 @@ def change_password(self): ...
 
 - `Admin` 默认 URL：`/admin`。
 - 模型视图默认 `allow_access=False`。
-- 匿名访问 `/admin/author/` 默认返回 **403**，不是登录重定向；需要跳转登录时给方法加 `@login_required`。
+- 匿名访问 `/admin/author/` 默认返回 **403**，不是登录重定向；需要登录要求时把方法名加入 `login_required_functions`，结果仍是 403。若需要跳转登录页，覆盖视图的 `inaccessible_callback`。
 - `/admin/` 门户由 `PortalExtension.IndexView` 提供，`allow_access=True`，匿名可访问；不要把它误认为“后台已公开”。
 - Admin 视图的 `can_create`/`can_edit`/`can_delete` 是**视图级功能开关**，不是用户授权；用户授权仍由 `SimpleAuthorizer` 决定。
+
+### 4.6 可选 `RBACAuthorizer`
+
+`RBACAuthorizer` 是移植自 Flask-RPBAC 的 requirement 授权器，在共用登录门之后按视图声明判定，能力比 `SimpleAuthorizer` 更强；默认授权器仍是 `SimpleAuthorizer`，只有显式配置才启用。用户使用说明见 `flask-exts/docs/advanced/authorization.rst`。
+
+启用方式：
+
+```python
+app.config["SECURITY_AUTHORIZER"] = "rbac"
+```
+
+`Registry._create_authorizer()` 只接受 `"simple"`（默认）与 `"rbac"`；其他值在安全扩展初始化时抛 `ValueError`，不会静默回退到默认授权器。
+
+#### 4.6.1 requirement 模型
+
+requirement 在 `BuildContext` 上求值；上下文包含 `user`、`roles`、`permissions`、`kwargs`、`view`、`fn` 和单次检查内共享的 `pstore`。
+
+- `Role(*names, match="any")`
+  - 默认 `match="any"`，命中任一角色即通过。
+  - `match="all"` 要求全部角色。
+  - 无参数抛 `ValueError`，未知 `match` 抛 `ValueError`。
+- `Permission(*names, match="all")`
+  - 默认 `match="all"`，要求全部权限。
+  - `match="any"` 命中任一权限即通过。
+  - 无参数或未知 `match` 抛 `ValueError`。
+- `Predicate(func)`
+  - `func` 接收 `BuildContext`，返回 truthy 即通过。
+  - 用于对象级判断，例如比较 `ctx.view.ticket_owner_id` 与 `ctx.user.id`。
+  - 非 callable 抛 `TypeError`。
+- `All(*requirements)`：全部子 requirement 通过才通过。
+- `Any(*requirements)`：任一子 requirement 通过即通过。
+- `Not(*requirements)`：所有子 requirement 都不通过才通过。
+- `&` 与 `|`：分别是 `All` 与 `Any` 的语法糖。
+- `Authenticated()`：`user.is_authenticated` 为真即通过。
+
+requirement 只读取上下文中已加载的 roles/permissions 和传入数据，不会修改角色或权限集合；`admin` 超级权限在 `Authorizer.check_view_access()` 中先于 requirement 执行，loader 与 `Predicate` 不额外识别 admin。
+
+#### 4.6.2 视图声明
+
+requirement 直接声明在视图类上，不使用路由装饰器：
+
+```python
+class TicketView(ModelView):
+    permission = All(Role("editor"), Predicate(owns_ticket))
+    permissions = {"delete": Permission("ticket:delete")}
+    roles = ("admin", "support")
+```
+
+判定优先级：
+
+1. `permissions[fn.__name__]`：方法级覆盖，仅在提供 `fn` 且映射包含该方法名时生效。
+2. `permission`：整个视图的默认 requirement。
+3. `roles`：转换为 `Role(*roles)`。
+4. `allow_by_roles()`：视图未声明任何 requirement 时，保留 `admin`/`role_need` 回退。
+
+补充规则：
+
+- 字符串是 `Role` 的简写，例如 `permission = "admin"` 等价于 `Role("admin")`。
+- 不支持的声明类型抛 `TypeError`，不会静默放行。
+- `allow_access = True` 的公开视图在登录门处直接放行，不执行上述 requirement。
+
+#### 4.6.3 身份数据来源
+
+roles/permissions 按以下优先级加载：
+
+1. `user_data_loader`：返回 `{"roles": [...], "permissions": [...]}` 的 callable，优先级最高。
+2. `role_loader` 与 `permission_loader`：分别返回当前用户的角色名与权限名。
+3. 用户对象的 `get_roles()` 与 `get_permissions()`。
+4. 都没有时为空集合，requirement 按失败处理。
+
+loader 属于应用代码，其返回值必须来自可信身份存储，不能直接由请求参数拼接。
+
+#### 4.6.4 判定顺序与兼容性
+
+`RBACAuthorizer.allow()` 的顺序：
+
+1. 调用 `Authorizer.check_view_access()`；匿名访问非公开视图或受限公开方法在此拒绝，已登录且 active 的 `admin` 在此直接放行。
+2. `allow_access=True` 的公开视图直接放行。
+3. 已登录的非公开视图先检查 `is_active`；禁用用户拒绝。
+4. 解析并执行视图 requirement；未声明 requirement 时回退 `allow_by_roles()`。
+5. `view` 为空时跳过视图级判定，直接回退 `allow_by_roles()`。
+
+因此：
+
+- `admin`、`role_need` 的既有行为保持兼容。
+- `admin` 在共用登录门直接放行，不执行视图 requirement。
+- `is_active=False` 不能靠 requirement 通过。
+- 公开视图不会因为声明了 `permission` 而变成受保护页面；需要保护时不要设置 `allow_access=True`。
+- `can()`、`has_role()`、`has_permission()`、`build_context()` 只是查询辅助方法，不执行登录门与 `is_active` 检查，也不包含 `admin` 超级用户捷径；用它们决定请求是否放行时，调用方必须自行补上这些检查。
+
+行为契约见 `REQ-AUTHZ-007`～`REQ-AUTHZ-009`；回归测试见 `tests/unit/security/test_rbac_authorizer.py`。
 
 ## 5. 密码与凭据
 
@@ -808,7 +947,7 @@ def get_totp_secret(self):
 ### 8.3 登录时的 TFA
 
 - 密码正确且 `tfa_enabled=True` → 只写 `pending_tfa_user_id`，**不建立登录会话**。
-- `/user/verify_tfa/` 故意不加 `@login_required`；它靠 session 中的 pending id 识别用户。
+- `/user/verify_tfa/` 故意不列入 `login_required_functions`；它靠 session 中的 pending id 识别用户。
 - 验证通过后才 `login_user`，并清理 pending 状态。
 - 恢复码登录同样完成第二因子，并消耗一个恢复码。
 - 登出清理所有 TFA 相关 session key。
@@ -1131,7 +1270,7 @@ server {
 - `SEC-02`
   - 等级：高（工作树修复，未发布）
   - 位置：`builtin_extensions/login_ext.py::load_user_from_request`
-  - 现状：JWT 载荷含 `pwd` 与 `amr`；TFA 用户必须带 `otp` 声明；`test_tfa_user_requires_otp_claim`、`test_token_endpoint_requires_completed_tfa` 覆盖
+  - 现状：JWT 载荷含 `pwd` 与 `amr`；TFA 用户必须带 `otp` 声明；`test_tfa_user_requires_otp_claim` 覆盖 JWT 请求加载路径，专用令牌端点的完成态 TFA 用例待补
   - 建议：发布后按退役规则处理；0.4.2 及更早版本仍需网关二次验证
 
 - `SEC-03`
@@ -1204,7 +1343,7 @@ server {
   - 等级：信息
   - 位置：Admin 视图
   - 现状：匿名访问模型视图返回 403，不是登录重定向
-  - 建议：需要跳转登录时加 `@login_required`
+  - 建议：需要登录要求时声明 `login_required_functions`；需要跳转登录页时覆盖 `inaccessible_callback`
 
 - `SEC-16`
   - 等级：中（已在 0.4.2 修复）
@@ -1315,7 +1454,7 @@ server {
 - [ ] 默认 `admin/admin` 已删除或改密
 - [ ] 管理员启用 TFA
 - [ ] 禁用管理员时已同时移除 `admin` 角色（规避 SEC-01）
-- [ ] 普通用户没有 `admin`/`super_admin`
+- [ ] 普通用户没有 `admin` 角色
 - [ ] 公开视图清单已评审（`allow_access=True`）
 
 ### 14.3 网络与限流

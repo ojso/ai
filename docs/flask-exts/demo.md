@@ -492,7 +492,7 @@ demo 目前没有自定义 CLI。若新增，在 `make_app.py` 的 `init_app(app
 - [ ] 按第 0.4 节重置可丢弃的本地 demo 数据库后能自动建库
 - [ ] `/` 返回 200
 - [ ] `/admin/` 门户返回 200（`allow_access=True`，未登录也可访问）
-- [ ] `/admin/author/` 未登录默认返回 403；仅该视图显式使用 `@login_required` 时检查 302
+- [ ] `/admin/author/` 未登录默认返回 403；`login_required_functions` 也返回 403（不重定向）
 - [ ] `admin/admin` 能登录
 - [ ] 登录后 `/admin/author/` 列表可打开（无 `no such column`）
 - [ ] `/admin/post/` 列表、关联列、筛选可用

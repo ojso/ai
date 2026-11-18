@@ -4,8 +4,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-16 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 CR-002 计数语义、CR-005/CR-006、CR-007、SEC-19、CR-012、CR-011、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定）。2026-11-16 提交 `1349295` 补充负页码夹取、列表页码链接、AJAX 负 offset、默认视图选择、导出原样输出与用户时间戳 UTC 说明。 |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 CR-002 计数语义、CR-005/CR-006、CR-007、SEC-19、CR-012、CR-011、AUTH-009/AUTH-010、`requires_active` 移除、SEC-13/SEC-16/SEC-18 处理与 AUTH-011 失败登录锁定）。2026-11-16 提交 `1349295` 补充负页码夹取、列表页码链接、AJAX 负 offset、默认视图选择、导出原样输出与用户时间戳 UTC 说明。2026-11-17 工作树以 `View.login_required_functions` 取代 `login_required` 装饰器，匿名访问受限方法返回 403。2026-11-18 登录门抽到 `Authorizer.check_view_access()`，`SimpleAuthorizer` 与 `RBACAuthorizer` 共用；补充可选 RBAC 授权器说明。 |
 > | 目的 | 说明项目定位、设计边界与关键取舍，并维护 View/Admin、插件和数据库专题；不重复写需求、安全和测试细节 |
 
 ## 1. 项目定位
@@ -87,6 +87,7 @@ Flask-Exts 是一个面向 Flask 的扩展集合，用于把常见的 Web 基础
 
 - 完整威胁模型、密钥派生、认证会话、CSRF 与 TFA 等详见 [`security.md`](./security.md)。
 - 用户凭据契约与授权规则详见 [`requirements.md`](./requirements.md)。
+- 授权器可切换：默认 `SimpleAuthorizer`；配置 `SECURITY_AUTHORIZER="rbac"` 启用 `RBACAuthorizer`，支持 `Role`、`Permission`、`Predicate` 及其组合，详见 [`security.md` 4.6](./security.md#46-可选-rbacauthorizer)。
 
 ## 5. 当前结构概览
 
@@ -213,10 +214,9 @@ http://localhost:5000/admin/author/
 #### 10.0.2 最小自定义页面
 
 ```python
-from flask_exts.admin import View, expose_url, login_required
+from flask_exts.admin import View, expose_url
 
 class AboutView(View):
-    @login_required
     @expose_url("/")
     def index(self):
         return self.render_string("<h1>About</h1>")
@@ -227,7 +227,8 @@ admin.register_view(aboutview)
 
 - `url="about"` → `/admin/about/`
 - `url="/about"` → `/about/`（绝对路径，不加 `/admin` 前缀）
-- `allow_access = True` 可公开；否则默认需要 admin 权限
+- `allow_access = True` 可公开；否则默认需要登录且需要 admin 权限
+- 公开视图中只让部分方法要求登录时，用 `login_required_functions`（见 10.3.3）
 
 #### 10.0.3 最小 Inline / AJAX 配置
 
@@ -355,28 +356,29 @@ View(
   - `"about"` → `/admin/about`
   - `"/about"` → `/about`（绝对路径）
 - `template_folder` / `static_folder`：视图专属模板/静态目录。
+- `login_required_functions`：在 `allow_access = True` 的公开视图上，列出需要登录的已暴露方法名。匿名访问这些方法时由授权器拒绝，视图返回 `inaccessible_callback()` 的结果（默认 403）；未列出的方法保持公开。`allow_access = False` 的视图本来就要求登录，列出名称冗余但无害。只能列出用 `expose_url` 暴露的方法；未知方法名在视图实例化时抛 `ValueError`，传入字符串抛 `TypeError`。
 
 #### 10.3.2 路由装饰器
 
 ```python
-@login_required
 @expose_url("/", methods=("GET",))
 def index(self): ...
 ```
 
 - `expose_url(url, methods=("GET",))`：登记 URL 与允许方法
-- `login_required`：Flask-Login 包装，并标记 `_login_required`
 - `expose_action(name, text, confirmation=None)`：登记批量/行操作
 
-**装饰器顺序**（自上而下）：
+两者只登记路由与动作元数据，不负责授权。原 `flask_exts.admin.login_required` 装饰器已移除；需要登录要求时在视图类上声明 `login_required_functions`。
+
+**方法定义顺序**：`@expose_url` 必须最靠近函数（最内层），因为 `ViewMeta` 只扫描带 `_urls` 的方法：
 
 ```python
-@login_required
+@other_decorator
 @expose_url("/settings/", methods=("GET", "POST"))
 def settings(self): ...
 ```
 
-`login_required` 先处理匿名用户（重定向登录）；禁用账号在登录或会话加载阶段已被拒绝，不会进入授权器。
+禁用账号在登录或会话加载阶段即被拒绝，不会进入授权器。
 
 #### 10.3.3 ViewMeta 与访问控制
 
@@ -386,13 +388,19 @@ def settings(self): ...
 
 包装顺序：
 
-1. 若标记 `_login_required` 且未登录 → 交给 Flask-Login（重定向登录）。
-2. `view.allow()` → `admin.allow()` → `current_security.authorize_allow()`。
-3. 不允许 → `inaccessible_callback()`，默认 `abort(403)`。
+1. `view.allow()` → `admin.allow()` → `current_security.authorize_allow()`。
+2. `view.allow_access = True`：只检查 `login_required_functions`；匿名调用列出的方法 → 拒绝，未列出的方法继续放行。
+3. `view.allow_access = False`：用户未登录 → 拒绝。
+4. 已登录且 `is_active=True` 的 `admin` 在共用登录门直接放行，不进入后续 requirement。
+5. 其余已登录用户继续按授权器规则判定（`is_active`、requirement 或 `role_need` 等）。
+6. 不允许 → `inaccessible_callback()`，默认 `abort(403)`；**不再重定向登录**。
+
+第 2–4 步由基类 `Authorizer.check_view_access()` 统一执行，`SimpleAuthorizer` 与 `RBACAuthorizer` 共用该登录门，子类只负责其后的角色回退或 requirement 判定。
 
 `allow_access = True`：
 
-- 让整个视图可匿名访问（如登录/注册/门户）。
+- 让视图默认可匿名访问（如登录/注册/门户）。
+- 仅当方法列入 `login_required_functions` 时才要求登录；这些方法对匿名请求返回 403。
 - 绕过授权器的 `is_active` 检查。
 - 禁用账号无法通过登录或 `user_loader` 获得已认证身份，因此公开视图不会因此暴露账号功能。
 

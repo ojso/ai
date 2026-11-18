@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
-> | 最后更新 | 2026-11-16 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 复跑 330 passed（新增边界、JWT `iat`、UTC 时间戳、TOTP flush 与默认视图回归用例） |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 复跑 330 passed（新增边界、JWT `iat`、UTC 时间戳、TOTP flush 与默认视图回归用例）；2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`（匿名返回 403），新增校验与授权器回归用例后 338 passed；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后 389 passed；同日在共用登录门为 active `admin` 增加超级权限 394 passed |
 > | 适用仓库 | `flask-exts` |
 >
 > **文档状态说明**：本文的测试目录与数量以 2026-11-13 的 HEAD `445b03d1fe6c59cd53405c8187de968c687a2909` 为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
@@ -79,15 +79,15 @@ uv run pytest -q tests/unit/forms/form/test_form.py
 ### 1.1 当前规模
 
 - **测试文件**
-  - 当前值：50 个 `test_*.py`
+  - 当前值：52 个 `test_*.py`
   - 说明：全部位于 `tests/unit/` 与 `tests/integration/`
 
 - **测试函数**
-  - 当前值：279 个
-  - 说明：以 `def test_...` 统计（2026-11-16 提交 `1349295`；HEAD `445b03d` 为 235 个）
+  - 当前值：342 个
+  - 说明：以 `def test_...` 统计（2026-11-18 工作树；HEAD `1349295` 为 278 个）
 
 - **断言**
-  - 当前值：约 1112 处
+  - 当前值：约 1198 处
   - 说明：按 `\bassert\b` 全文匹配统计（复现脚本见第 1.5 节），不含 `pytest.raises`
 
 - **测试框架**
@@ -136,10 +136,10 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.2 现有测试分布
 
-按 2026-11-16 提交 `1349295` 统计，各区域合计与第 1.1 节的 279 个测试函数一致。
+按 2026-11-18 工作树（HEAD `1349295` 加未提交差异）统计，各区域合计与第 1.1 节的 342 个测试函数一致。
 
 - `integration/admin`
-  - 测试函数数：58
+  - 测试函数数：57
   - 主要文件：完整入口见 1.2.1
   - 评价：历史快照覆盖 CRUD、Inline、搜索、排序、分页、批量操作、导出、复合主键、inactive admin、can_edit 边界；本轮补充负 offset 场景
 
@@ -154,14 +154,14 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖依赖排序、循环依赖、幂等、关闭、异常隔离、内置扩展装配
 
 - `unit/admin`
-  - 测试函数数：26
+  - 测试函数数：29
   - 主要文件：`test_mockview.py`、`test_pagination.py`、`test_type_formatters.py`、`test_admin.py`、`test_view.py`
-  - 评价：覆盖视图元数据、格式化、分页 URL 编码、负页码夹取、页码链接、默认视图选择与布尔格式化转义，偏“配置读取”
+  - 评价：覆盖视图元数据、格式化、分页 URL 编码、负页码夹取、页码链接、默认视图选择与布尔格式化转义、`login_required_functions` 声明与非法名称校验，偏“配置读取”
 
 - `integration/usercenter`
   - 测试函数数：22
   - 主要文件：`tests/integration/usercenter/test_user_view.py`
-  - 评价：覆盖注册、重复/非法邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、失败登录与失败 TFA 锁定/解锁、改密码、找回/重置、恢复码
+  - 评价：覆盖注册、重复/非法邮箱、改邮箱确认/密码/非法地址、重发验证、登录前置返回 403、禁用账号拒绝登录/拒绝完成 pending TFA/旧会话即时失效、TFA 启用/关闭/登录/防绕过、失败登录与失败 TFA 锁定/解锁、改密码、找回/重置、恢复码
 
 - `unit/datastore`
   - 测试函数数：14
@@ -169,9 +169,9 @@ filterwarnings = ["error::DeprecationWarning"]
   - 评价：覆盖单例、重绑定、内存 SQLite、JOIN 复用、类型推断；计数正确性未覆盖
 
 - `unit/security`
-  - 测试函数数：10
-  - 主要文件：`tests/unit/security/test_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py`
-  - 评价：授权包括 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 和 `role_need`；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行
+  - 测试函数数：71
+  - 主要文件：`tests/unit/security/test_authorizer.py`、`tests/unit/security/test_simple_authorizer.py`、`tests/unit/security/test_rbac_authorizer.py`、`tests/unit/security/test_tfa.py`、`tests/unit/security/test_urls.py`
+  - 评价：`test_authorizer.py` 覆盖基类 `check_view_access()`（含 active `admin` 直接放行与 inactive admin 不走捷径）、`requires_login()`、`allow_by_roles()` 与 `authorize()`；`test_simple_authorizer.py` 覆盖 admin、inactive admin、普通用户、无角色/无用户、`allow_access` 方法级登录限制、非公开视图、`role_need` 与 `login_required_functions`；`test_rbac_authorizer.py` 覆盖 `Role`/`Permission`/`Predicate`/`All`/`Any`/`Not`/`Authenticated`、视图声明优先级、loader 优先级、查询 API、配置选择、共用登录门与既有规则兼容；TFA 涉及 URI、生成/校验；URL 涉及外部/畸形拒绝和本地路径放行
 
 - `unit/frontend`
   - 测试函数数：9
@@ -276,7 +276,7 @@ filterwarnings = ["error::DeprecationWarning"]
 
 ### 1.5 数据快照与重新统计
 
-本文的 50 / 279 / 1112 已按 2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
+本文的 52 / 342 / 1198 已按 2026-11-18 工作树（HEAD `1349295` 加未提交差异）重新统计。统计是文本近似值；代码更新后应重新运行以下脚本：
 
 ```bash
 python - <<'PY'
@@ -1626,7 +1626,7 @@ class UserFactory(factory.Factory):
   - 类型：I
   - 优先级：P0
   - 状态：待补/部分
-  - 关键断言：默认 403（加 @login_required 时重定向）
+  - 关键断言：默认 403；`login_required_functions` 也是 403（不重定向）
 
 - `TC-ADMIN-026`
   - 场景：权限：普通用户
@@ -1920,7 +1920,7 @@ class UserFactory(factory.Factory):
   - 类型：U
   - 优先级：P0
   - 状态：现有
-  - 关键断言：允许
+  - 关键断言：未列入 `login_required_functions` 的方法允许匿名访问；公开视图跳过 RBAC requirement
 
 - `TC-SEC-016`
   - 场景：TFA 生成/校验
@@ -1970,6 +1970,27 @@ class UserFactory(factory.Factory):
   - 优先级：P0
   - 状态：现有
   - 关键断言：访问 Admin 返回 403；`test_deny_inactive_admin_user`、`test_inactive_admin_is_denied`
+
+- `TC-SEC-023`
+  - 场景：RBAC requirement 组合判定
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`Role` 默认 any、`Permission` 默认 all；`All`/`Any`/`Not` 与 `&`/`|` 组合；`Predicate` 收到 `BuildContext`；空声明与非法类型报错
+
+- `TC-SEC-024`
+  - 场景：RBAC 视图声明、loader 与查询 API
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：`permissions[fn]` 优先于 `permission` 与 `roles`；字符串等价 `Role`；loader 优先级与用户 getter 回退；`can`/`has_role`/`has_permission` 查询
+
+- `TC-SEC-025`
+  - 场景：RBAC 授权器选择与既有规则兼容
+  - 类型：U
+  - 优先级：P0
+  - 状态：现有
+  - 关键断言：默认 `SimpleAuthorizer`、`"rbac"` 选择 RBAC、未知值 `ValueError`；公开视图跳过 requirement；inactive 拒绝；未声明或 `view=None` 回退角色规则；active `admin` 在登录门直接放行
 
 补充场景与测试建议（2026-11-07 快照，现状待核实；风险编号不是测试编号）：
 
@@ -3341,6 +3362,30 @@ show_missing = true
   - 函数覆盖：待测
   - 命令：`.venv/bin/python -m pytest -q`
   - 备注：330 passed、0 跳过；31.79s；Python 3.13.5；`ruff check` 与 `ruff format --check` 通过
+
+- **2026-11-17 · 1349295 + 工作树（login_required_functions）**
+  - commit：`134929564791b2d5bc843685650ee8ccd13d1bc6` 加未提交工作树差异（`View.login_required_functions` 取代 `flask_exts.admin.login_required`；匿名访问受限方法返回 403；非法方法名在视图构造时失败；Simple/RBAC 授权器一致性；删除 `usercenter/auth_requires.py`）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：338 passed、0 跳过；31.45s；Python 3.13.5；`ruff check` 与 `ruff format --check` 通过
+
+- **2026-11-18 · 1349295 + 工作树（共用登录门与 RBAC）**
+  - commit：`134929564791b2d5bc843685650ee8ccd13d1bc6` 加未提交工作树差异（登录门抽到 `Authorizer.check_view_access()`，`SimpleAuthorizer` 与 `RBACAuthorizer` 共用；补齐 RBAC 公开视图、非公开视图与 requirement 用例；测试拆分为基类、Simple 与 RBAC 三个文件）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：389 passed、0 跳过；31.39s；Python 3.13.5；`ruff check` 与 `ruff format --check` 通过
+
+- **2026-11-18 · 1349295 + 工作树（admin 登录门超级权限）**
+  - commit：`134929564791b2d5bc843685650ee8ccd13d1bc6` 加未提交工作树差异（`Authorizer.check_view_access()` 对已登录且 active 的 `admin` 直接放行）
+  - 行覆盖：未采集
+  - 分支覆盖：待测
+  - 函数覆盖：待测
+  - 命令：`.venv/bin/python -m pytest -q`
+  - 备注：394 passed、0 跳过；30.51s；Python 3.13.5；`ruff check` 与 `ruff format --check` 通过
 
 规则：
 

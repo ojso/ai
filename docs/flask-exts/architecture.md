@@ -6,8 +6,8 @@
 > | --- | --- |
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
-> | 最后更新 | 2026-11-13 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`） |
+> | 最后更新 | 2026-11-18 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-17 工作树以 `View.login_required_functions` 取代 `login_required` 装饰器；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，并补充 RBAC 授权器说明 |
 > | 适用仓库 | `flask-exts` |
 
 ## 1. 系统上下文
@@ -151,8 +151,7 @@ ExtensionManager()
 ```text
 GET /admin/<endpoint>/
   → ViewMeta 包装
-  → 可选 @login_required（匿名先重定向登录）
-  → View.allow → SimpleAuthorizer
+  → View.allow → Authorizer.check_view_access（共用登录门）→ SimpleAuthorizer 角色回退或 RBACAuthorizer requirement
   → ModelView.index_view
       → get_list_args（page/page_size/sort/desc/search/flt）
       → get_safe_page_size
@@ -207,8 +206,7 @@ POST /user/verify_tfa/
 ```text
 @expose_url 方法
   → ViewMeta 包装
-  → @login_required
-  → View.allow
+  → View.allow（非公开视图要求登录；公开视图按 login_required_functions 拦截）
   → render() / render_string()
 ```
 
