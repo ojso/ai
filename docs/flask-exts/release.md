@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0` 已推送并发布至 PyPI；全量 `393 passed`） |
+> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0` 已推送并发布至 PyPI） |
 > | 适用范围 | 本目录文档与工程发布评审 |
 >
 > 本文件是发布前门禁、兼容性策略、回滚条件与发布说明模板的唯一事实源；其他文档只引用，不复制。
@@ -22,7 +22,7 @@
 - **工程代码**
   - 版本/来源：版本文件 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0`
   - 状态：已提交、打标签并推送至 `origin`；已发布至 PyPI
-  - 说明：`0.5.0` 同时包含未发布的 `0.4.3` 变更；基于该提交全量实跑 393 passed；`dist/flask_exts-0.5.0-*` 已在本地构建
+  - 说明：`0.5.0` 同时包含未发布的 `0.4.3` 变更；基于该提交全量测试通过，证据见 `testing.md` 第 10.5 节；`dist/flask_exts-0.5.0-*` 已在本地构建
 
 - **发布执行**
   - 版本/来源：`.github/workflows/release.yml` 由 tag `v*` 触发
@@ -207,7 +207,7 @@
 
 已执行：
 
-- `python -m pytest -q`：393 passed
+- `python -m pytest -q`：通过；结果与证据见 `testing.md` 第 10.5 节
 - 变更文件的 `ruff check` 与 `ruff format --check`：通过
 - `python -m sphinx -b html docs docs/_build/html -W -n --keep-going`：通过
 - `uv build`：生成 `dist/flask_exts-0.5.0-py3-none-any.whl` 与 `dist/flask_exts-0.5.0.tar.gz`，wheel 元数据版本为 `0.5.0`
