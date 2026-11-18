@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`；`0.4.2` 已包含 SEC-01/SEC-05/SEC-13/SEC-16/SEC-17/SEC-18/SEC-19 修复，SEC-03 为部分修复）。2026-11-15 工作树已修复 SEC-02/SEC-08/SEC-12，并完成 JWT 算法白名单、密钥校验、`iat`/`JWT_LEEWAY`、Bearer 大小写与 `id`/`amr` 严格校验；SEC-12 补充 Cookie 默认值开关、显式 `SameSite=None` 与 `ProxyFix` 场景；尚未提交或发布。2026-11-16 提交 `1349295` 补充 JWT 解码强制 `iat`、CSRF session token 改用 `secrets.token_urlsafe(32)`、TOTP secret 改为 flush 加服务层提交、未知 serializer 默认 30 分钟，以及用户/锁定时间统一 UTC；代码已提交，尚未发布。2026-11-17 工作树以 `View.login_required_functions` 取代 `login_required` 装饰器，匿名访问受限方法返回 403。2026-11-18 登录门抽到 `Authorizer.check_view_access()`，`SimpleAuthorizer` 与 `RBACAuthorizer` 共用；新增 `RBACAuthorizer` requirement 模型、视图声明、loader 与授权器选择说明；同日发布 `0.5.0`（HEAD `ca9f325`，标签已推送并发布至 PyPI），并记录对象级 requirement 只覆盖声明方法的已知限制。 |
+> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0` 已发布；全量 `393 passed`） |
 > | 适用仓库 | `flask-exts` |
 >
 > **重要说明**：本文选定风险已对照 HEAD `171b40968f309c04ae3ad423696227c2767b0055` 做静态源码核对；这不是完整安全审计或渗透测试，也不能证明运行配置、风险可利用性或修复已验证。标记为“风险/待决策”的内容仍需结合部署环境评估；代码修复须先评审、补测试，再实施。

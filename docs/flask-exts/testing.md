@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1（工作稿） |
 > | 状态 | 工作稿 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；测试清单和统计已复核）；2026-11-16 提交 `134929564791b2d5bc843685650ee8ccd13d1bc6` 复跑 330 passed（新增边界、JWT `iat`、UTC 时间戳、TOTP flush 与默认视图回归用例）；2026-11-17 工作树以 `View.login_required_functions` 取代 `flask_exts.admin.login_required`（匿名返回 403），新增校验与授权器回归用例后 338 passed；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，补齐 RBAC 授权器共用门与 requirement 全量用例后 389 passed；同日在共用登录门为 active `admin` 增加超级权限记录为 394 passed；2026-11-18 `0.5.0`（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`，标签已推送并发布至 PyPI）全量复跑 **393 passed**，并以此为准；此前 394 的差异未复现 |
+> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0` 已发布；测试文件 52 / 测试函数 341 / assert 1197，全量 `393 passed`） |
 > | 适用仓库 | `flask-exts` |
 >
 > **文档状态说明**：本文的测试目录与数量以 2026-11-18 的 HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`（`0.5.0`）为基线。当前仓库没有 `tests/e2e/`、`tests/performance/`；`mail_outbox` 已在 `tests/integration/usercenter/test_user_view.py` 中落地。凡标“待补”“待修”“目标”“规划”的内容，均需按第 12 节分阶段实施后再视为已落地。重新统计现状的方法见 1.5。
