@@ -563,6 +563,21 @@ def count_gaps(readme_text: str) -> dict[str, int]:
     return counts
 
 
+def check_metadata_snapshots(files: dict[str, str]) -> list[str]:
+    """核对数据快照只出现在 release.md，且恰好一条。"""
+    errors: list[str] = []
+    for name, text in files.items():
+        rows = re.findall(r"^> \| 数据快照 \|", text, re.MULTILINE)
+        if name == "release.md":
+            if len(rows) != 1:
+                errors.append(
+                    f"release.md: 必须有且只有一条数据快照，实际 {len(rows)} 条"
+                )
+        elif rows:
+            errors.append(f"{name}: 数据快照只允许在 release.md 维护")
+    return errors
+
+
 def check_status_blocks(files: dict[str, str], contracts: dict) -> list[str]:
     """第 14 项：只读核对头部置顶清单数据；不一致仅报错阻断，严禁自动写入。"""
     errors: list[str] = []
@@ -672,6 +687,7 @@ def main() -> int:
     errors.extend(check_status_values(contracts))
     errors.extend(check_passed_evidence(contracts))
     errors.extend(check_defect_ids(files.get("spec.md", "").splitlines(), files))
+    errors.extend(check_metadata_snapshots(files))
     errors.extend(check_status_blocks(files, contracts))
 
     # 仓库交叉层
