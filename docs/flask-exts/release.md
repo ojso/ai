@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；本地标签 `v0.5.0`，未推送；全量 `393 passed`） |
+> | 数据快照 | 2026-11-18（发布版本 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0` 已推送并发布至 PyPI；全量 `393 passed`） |
 > | 适用范围 | 本目录文档与工程发布评审 |
 >
 > 本文件是发布前门禁、兼容性策略、回滚条件与发布说明模板的唯一事实源；其他文档只引用，不复制。
@@ -20,14 +20,14 @@
   - 说明：适合设计、审查和协作基线
 
 - **工程代码**
-  - 版本/来源：版本文件 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；本地标签 `v0.5.0`
-  - 状态：已提交并本地打标签；**未推送**至 `origin`，未发布到 PyPI
+  - 版本/来源：版本文件 `0.5.0`；HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`；标签 `v0.5.0`
+  - 状态：已提交、打标签并推送至 `origin`；已发布至 PyPI
   - 说明：`0.5.0` 同时包含未发布的 `0.4.3` 变更；基于该提交全量实跑 393 passed；`dist/flask_exts-0.5.0-*` 已在本地构建
 
 - **发布执行**
   - 版本/来源：`.github/workflows/release.yml` 由 tag `v*` 触发
-  - 状态：未触发
-  - 说明：`origin` 无 `v0.5.0` 标签；PyPI 最新版本仍为 `0.4.2`；未推送标签前不会构建或发布
+  - 状态：已成功执行
+  - 说明：GitHub Actions 运行 `Publish Python distribution to PyPI`（ID `44320779231`）与 `Documentation`（ID `44320779498`）均为 success；PyPI 已提供 `flask_exts-0.5.0-py3-none-any.whl` 与 `flask_exts-0.5.0.tar.gz`，上传时间 2026-11-18T14:07Z
 
 - **文档与实现关系**
   - 版本/来源：本轮已按 HEAD `ca9f325` 更新有证据支持的事实
@@ -211,10 +211,10 @@
 - 变更文件的 `ruff check` 与 `ruff format --check`：通过
 - `python -m sphinx -b html docs docs/_build/html -W -n --keep-going`：通过
 - `uv build`：生成 `dist/flask_exts-0.5.0-py3-none-any.whl` 与 `dist/flask_exts-0.5.0.tar.gz`，wheel 元数据版本为 `0.5.0`
+- 推送 `main` 与 `v0.5.0` 标签；GitHub Actions 的 PyPI 发布与文档任务均成功；PyPI 已可查询 `0.5.0` 的 wheel 与 sdist
 
 未执行：
 
-- 未推送 `main` 与 `v0.5.0` 标签；未触发 GitHub Actions，未发布到 PyPI
 - 未对现有 `examples/demo/demo.sqlite` 执行破坏性重建；demo 的 RBAC 路径使用临时数据库验证
 - 未运行 `djlint`；本版本未修改模板
 

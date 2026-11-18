@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）。2026-11-18 `examples/demo` 启用 `SECURITY_AUTHORIZER="rbac"`，并新增 `user_interest` 模型与 `InterestView` 对象级授权示例；随 `0.5.0` 提交（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`，本地标签未推送）。 |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）。2026-11-18 `examples/demo` 启用 `SECURITY_AUTHORIZER="rbac"`，并新增 `user_interest` 模型与 `InterestView` 对象级授权示例；随 `0.5.0` 提交（HEAD `ca9f325fa2d43f53eaf14ca71a77ee75b1471406`，标签已推送并发布至 PyPI）。 |
 > | 适用目录 | `flask-exts/examples/demo`——代码仓库根目录下的示例应用；本文其余位置简写的 `examples/demo` 均指此路径，命令中的该路径相对仓库根目录执行 |
 >
 > **定位**：`examples/demo` 是**可运行的参考应用**，不是生产模板。它用尽量少的代码展示 Flask-Exts 的模型、Admin、Inline、筛选、排序、导出、AJAX、递归关系和自定义模板能力。修改 demo 时优先保证“能运行、能看懂、不引入额外依赖”。

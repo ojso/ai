@@ -7,7 +7,7 @@
 > | 文档版本 | v0.1 |
 > | 状态 | 可用 |
 > | 最后更新 | 2026-11-18 |
-> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-17 工作树以 `View.login_required_functions` 取代 `login_required` 装饰器；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，并补充 RBAC 授权器说明；同日发布 `0.5.0`（HEAD `ca9f325`，本地标签未推送） |
+> | 数据快照 | 2026-11-13（发布版本 `0.4.2`；HEAD `445b03d1fe6c59cd53405c8187de968c687a2909`；内容核对基线 `171b40968f309c04ae3ad423696227c2767b0055`）；2026-11-17 工作树以 `View.login_required_functions` 取代 `login_required` 装饰器；2026-11-18 登录门抽到 `Authorizer.check_view_access()`，并补充 RBAC 授权器说明；同日发布 `0.5.0`（HEAD `ca9f325`，标签已推送并发布至 PyPI） |
 > | 适用仓库 | `flask-exts` |
 
 ## 1. 系统上下文
