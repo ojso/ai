@@ -1,13 +1,8 @@
-# Flask-Exts 架构概览（Architecture Overview）
+# 架构概览（Architecture Overview）
 
 > 本文是 Flask-Exts 的**稳定架构一页纸**：系统边界、模块依赖、扩展生命周期、请求路径、状态所有权、关键决策与失败边界。实现与领域细节见 `spec.md`；安全边界见 `security.md`。
 >
-> | 项目 | 内容 |
-> | --- | --- |
-> | 文档版本 | v0.1 |
-> | 状态 | 可用 |
-> | 最后更新 | 2026-11-18 |
-> | 适用仓库 | `flask-exts` |
+> 更新时间：2026-11-19 08:12:16 +08:00
 
 ## 1. 系统上下文
 
@@ -424,7 +419,7 @@ ADR-<序号>: <决策标题>
 - **理由**：WTForms 3.3 与 SQLAlchemy 2.1 的上游下限都已经是 Python 3.11，继续支持 Python 3.10 只能锁定旧版依赖；同时维护两套 choices/`iter_choices` 或 ORM 行为会放大测试矩阵和回归风险。统一到 WTForms 3.3 与 SQLAlchemy 2.1 后，字段、widget、表单与 ORM 行为与上游一致，并消除 tuple choices 的弃用告警。
 - **备选方案**：继续声明 `WTForms<3.3`、`SQLAlchemy>=2.0` 并保留 Python 3.10（需要长期维护旧 choices/tuple 与 2.0 ORM 行为）；或同时支持 WTForms 3.3/旧版、SQLAlchemy 2.0/2.1（需在 `select.py`、`editable.py`、`QuerySelectField` 等位置保留双路径，测试矩阵翻倍）。
 - **风险**：下游 Python 3.10 或 SQLAlchemy 2.0.x 用户无法直接升级；WTForms 3.3 的 `Choice` 对象、`FieldList` 命名和 choices 规范化行为，以及 SQLAlchemy 2.1 的行为变化，可能影响自定义字段/模板或查询代码；回滚需同时恢复 `WTForms<3.3`、`SQLAlchemy>=2.0`、Python 3.10 声明及旧版字段/ORM 实现，并重跑 3.10 与 SQLAlchemy 2.0 矩阵。
-- **关联章节**：[`release.md` 第 3.1 节](./release.md#31-运行环境与依赖兼容性矩阵)、[`testing.md` 第 10.3 节](./testing.md#103-质量门禁)、[`README.md` 第 0.1 节](./README.md#01-准备环境python-311)。
+- **关联章节**：[`release.md` 第 3.1 节](./release.md#31-运行环境与依赖兼容性矩阵)、[`testing.md` 第 10.3 节](./testing.md#103-质量门禁)、[`testing.md` 第 0.1 节](./testing.md#01-环境准备)。
 
 #### ADR-005: 开发与主力验证 Python 版本锚定 Debian stable
 
@@ -439,7 +434,7 @@ ADR-<序号>: <决策标题>
 - **理由**：开发环境与操作系统稳定版一致，减少“本机可用、CI/部署不可用”的环境差异；同时保留 3.11 下限验证，避免为对齐开发机而丢弃仍受支持的发行版用户（如 Debian 12）。
 - **备选方案**：立即将 `requires-python` 提升到 `>=3.13`（会排除 Debian 12、Ubuntu 24.04 等用户，属破坏性变更）；仅验证主力版本 3.13（无法发现最低版本回归）；每发布新 Python 即升级主力（与 Debian stable 节奏脱节，依赖生态未必就绪）。
 - **风险**：Debian stable 升级时主力版本跳跃可能遇到依赖 wheel 缺失或行为变化，需要提前在 CI 增加新版本观察；若长期不升级，主力版本会落后于上游生态。回滚方式：恢复上一主力版本并同步 CI、RTD 与 classifier。
-- **关联章节**：[`release.md` 第 3.1 节](./release.md#31-运行环境与依赖兼容性矩阵)、[`testing.md` 第 11.3 节](./testing.md#113-测试工作流已落地)、[`README.md` 第 0.1 节](./README.md#01-准备环境python-311)、仓库 `AGENTS.md` 与 `docs/develop.rst`。
+- **关联章节**：[`release.md` 第 3.1 节](./release.md#31-运行环境与依赖兼容性矩阵)、[`testing.md` 第 11.3 节](./testing.md#113-测试工作流已落地)、[`testing.md` 第 0.1 节](./testing.md#01-环境准备)、仓库 `AGENTS.md` 与 `docs/develop.rst`。
 
 ## 8. 失败边界与约束
 

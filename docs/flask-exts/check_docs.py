@@ -28,8 +28,9 @@
 
 派生数据核对（第 13 项，纯只读校验）：
 13. 只读核对 `README.md` 与 `requirements.md` 头部的状态块数据（契约进度、
-    文档集健康度）。本脚本为纯只读门禁，严禁自动写入或回写文档；核对不一致时
-    仅报错阻断并输出期望值，由维护者依据文档规则人工修正。
+    文档集健康度），其中缺口计数来自 `gaps.md`。本脚本为纯只读门禁，严禁自动
+    写入或回写文档；核对不一致时仅报错阻断并输出期望值，由维护者依据文档规则
+    人工修正。
 
 用法：
     python check_docs.py
@@ -545,11 +546,11 @@ def contract_stats(contracts: dict) -> tuple[int, int, int, int]:
     return total, verified, total - retired - verified, retired
 
 
-def count_gaps(readme_text: str) -> dict[str, int]:
-    """统计 README 第 8 节各级缺口条目数。"""
+def count_gaps(gaps_text: str) -> dict[str, int]:
+    """统计 gaps.md 各级缺口条目数。"""
     counts: dict[str, int] = {}
     section = None
-    for line in readme_text.splitlines():
+    for line in gaps_text.splitlines():
         match = re.match(r"^### (P[012])：", line)
         if match:
             section = match.group(1)
@@ -567,7 +568,7 @@ def check_metadata_snapshots(files: dict[str, str]) -> list[str]:
     """核对数据快照只出现在 release.md，且恰好一条。"""
     errors: list[str] = []
     for name, text in files.items():
-        rows = re.findall(r"^> \| 数据快照 \|", text, re.MULTILINE)
+        rows = re.findall(r"^> 数据快照：", text, re.MULTILINE)
         if name == "release.md":
             if len(rows) != 1:
                 errors.append(
@@ -611,7 +612,7 @@ def check_status_blocks(files: dict[str, str], contracts: dict) -> list[str]:
     opens = collect_open_defects(files)
     cr = sum(1 for key in opens if key.startswith("CR"))
     sec = sum(1 for key in opens if key.startswith("SEC"))
-    gaps = count_gaps(readme_text)
+    gaps = count_gaps(files.get("gaps.md", ""))
     want_defects = f"CR {cr} · SEC {sec}"
     want_gaps = f"{gaps.get('P0', 0)} / {gaps.get('P1', 0)} / {gaps.get('P2', 0)}"
 
